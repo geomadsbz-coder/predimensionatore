@@ -11,7 +11,7 @@ with st.sidebar:
     api_key = st.text_input("Inserisci qui la tua API Key di Google", type="password")
     st.info("L'API Key serve per far leggere il capitolato all'Intelligenza Artificiale.")
     st.markdown("---")
-    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico per strutture, cicli antincendio e nodi di connessione.")
+    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico avanzato per strutture, cicli antincendio e nodi di connessione ad alte prestazioni (NTC 2018).")
 
 st.subheader("Analisi Capitolato / Appunti di Progetto")
 testo_commerciale = st.text_area(
@@ -25,7 +25,7 @@ Tutti gli elementi strutturali in acciaio saranno protetti in modo adeguato per 
 Interasse telaio 6,00ml"""
 )
 
-if st.button("Esegui Dimensionamento Completo", type="primary"):
+if st.button("Esegui Dimensionamento Conservativo", type="primary"):
     if not api_key:
         st.error("Inserisci prima l'API Key nella barra laterale!")
     elif not testo_commerciale:
@@ -39,44 +39,45 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             )
             
             prompt = f"""
-            Sei un ingegnere strutturista senior esperto in edifici prefabbricati, dettagli costruttivi di nodi strutturali (legno, acciaio, C.a.p.) e protezione antincendio. 
-            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale di massima, includendo in modo dettagliato il dimensionamento delle connessioni principali (Pilastro/Trave di copertura e Pilastro/Fondazione), specificando la tipologia costruttiva, gli elementi di fissaggio (spinotti, bulloni, tirafondi) e stimando il relativo peso in kg dell'acciaio impiegato nei nodi.
+            Sei un ingegnere strutturista senior esperto in edifici prefabbricati industriali, dimensionamento rigoroso secondo NTC 2018 / Eurocodici e progettazione esecutiva di nodi metallici e in legno lamellare. 
+            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale **conservativo e robusto** (tenendo conto di eventuali carichi neve e vento gravosi). 
+            Attenzione particolare alle connessioni: evita soluzioni sottodimensionate. Pretendi piastre spesse, tirafondi multipli di grande diametro, spinotti multipli ad alta resistenza e pesi in acciaio realistici per strutture pesanti.
             
             Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi di codice markdown attorno) con queste chiavi esatte:
             - "luogo": stringa (località del progetto, se non specificata scrivi "Bolzano")
             - "qsk": float (carico neve al suolo in kN/m², se non specificato 1.50)
             - "interasse_portali": float (in metri, se non specificato 6.0)
             - "interasse_arcarecci": float (in metri, se non specificato 1.5)
-            - "sezione_arcarecci": stringa (es. "Lamellare GL24h - 120x240 mm")
-            - "verifica_arcarecci": stringa (es. "Verificato a flessione e freccia")
-            - "travi_legno": stringa (es. "Trave a falda curva GL28h - 160x1000 mm")
-            - "travi_acciaio": stringa (es. "Profilo IPE 500 o Traliccio in acciaio S355")
-            - "travi_cap": stringa (es. "Trave a T o a tegolo in C.a.p. precompresso")
-            - "pilastri_legno": stringa (es. "Lamellare GL30h - 240x400 mm")
-            - "pilastri_acciaio": stringa (es. "Profilo HEB 260 S355")
-            - "pilastri_cap": stringa (es. "Pilastro prefabbricato in C.a.p. sezione 40x40 cm")
-            - "controventi_copertura_legno": stringa (es. "Diagonali in legno lamellare GL24h - 140x160 mm")
-            - "controventi_copertura_acciaio": stringa (es. "Croci in tondo d'acciaio Ø20 mm con tenditori")
-            - "controventi_copertura_pos": stringa (es. "N° 2 campi di falda in corrispondenza delle campate di testata")
-            - "controventi_parete_legno": stringa (es. "Baraccatura e diagonali in legno lamellare GL24h - 140x180 mm")
-            - "controventi_parete_acciaio": stringa (es. "Diagonali verticali in profilati cavi d'acciaio RHS 100x100x5 mm")
-            - "controventi_parete_pos": stringa (es. "Campate perimetrali di testata e pareti longitudinali")
-            - "conn_trave_pilastro_tipo": stringa (es. "Connessione con lama d'acciaio a scomparsa inserita nel colmo/trave e perni passanti")
-            - "conn_trave_pilastro_elementi": stringa (es. "N° 12 spinotti in acciaio ad alta resistenza Ø12 mm e piastra di testa saldata")
-            - "conn_trave_pilastro_kg": stringa (es. "18.5 kg per nodo")
-            - "conn_pilastro_fondazione_tipo": stringa (es. "Piastra di base in acciaio S355 spessore 25 mm con fazzoletti di irrigidimento e bicchiere/tirafondi")
-            - "conn_pilastro_fondazione_elementi": stringa (es. "N° 4 tirafondi di ancoraggio M24 L=800 mm in acciaio 8.8 con dima di posa")
-            - "conn_pilastro_fondazione_kg": stringa (es. "34.0 kg per plinto")
+            - "sezione_arcarecci": stringa (es. "Lamellare GL24h - 140x280 mm")
+            - "verifica_arcarecci": stringa (es. "Verificato a flessione, taglio e freccia instabile")
+            - "travi_legno": stringa (es. "Trave a falda curva GL30h - 180x1120 mm")
+            - "travi_acciaio": stringa (es. "Profilo IPE 550 / Traliccio pesante in acciaio S355")
+            - "travi_cap": stringa (es. "Trave a tegolo alare precompresso in C.a.p.")
+            - "pilastri_legno": stringa (es. "Lamellare GL32c - 280x480 mm")
+            - "pilastri_acciaio": stringa (es. "Profilo HEB 300 S355")
+            - "pilastri_cap": stringa (es. "Pilastro prefabbricato in C.a.p. sezione 50x50 cm")
+            - "controventi_copertura_legno": stringa (es. "Diagonali in legno lamellare GL24h - 160x200 mm")
+            - "controventi_copertura_acciaio": stringa (es. "Doppie croci di Sant'Andrea in tondo d'acciaio Ø24 mm con tenditori registrabili")
+            - "controventi_copertura_pos": stringa (es. "N° 2 campi di falda completi in corrispondenza delle campate di testata")
+            - "controventi_parete_legno": stringa (es. "Baraccatura pesante e diagonali in legno lamellare GL24h - 160x220 mm")
+            - "controventi_parete_acciaio": stringa (es. "Diagonali verticali rigide in profilati cavi strutturali RHS 140x140x8 mm")
+            - "controventi_parete_pos": stringa (es. "Campate perimetrali di testata e pareti longitudinali intermedie")
+            - "conn_trave_pilastro_tipo": stringa (es. "Connessione a momento rigida con doppia lama d'acciaio interna a scomparsa ad alto spessore e piastra di colmo saldata")
+            - "conn_trave_pilastro_elementi": stringa (es. "N° 20 spinotti in acciaio ad alta resistenza Ø16 mm disposti su maglia fitta + copripiastre esterne bullonate")
+            - "conn_trave_pilastro_kg": stringa (es. "45.0 kg per nodo (configurazione pesante)")
+            - "conn_pilastro_fondazione_tipo": stringa (es. "Piastra di base d'acciaio S355 spessore 35 mm irrigidita da n° 4 fazzoletti triangolari per lato e collare di base")
+            - "conn_pilastro_fondazione_elementi": stringa (es. "N° 8 tirafondi di ancoraggio ad alta resistenza M30 L=1200 mm in acciaio 8.8 con piastra d'ancoraggio inferiore")
+            - "conn_pilastro_fondazione_kg": stringa (es. "95.0 kg per plinto di fondazione")
             - "classe_resistenza_fuoco": stringa (es. "R 60")
-            - "mq_intumescente": stringa (es. "135 mq")
-            - "dettaglio_verniciatura": stringa (es. "Ciclo intumescente reattivo per profili aperti/chiusi con primer e finitura")
-            - "note_tecniche": stringa (breve sintesi delle considerazioni di calcolo, carichi neve/vento e verifiche)
+            - "mq_intumescente": stringa (es. "160 mq")
+            - "dettaglio_verniciatura": stringa (es. "Ciclo di vernice intumescente reattiva ad alto spessore per profili aperti pesanti con primer epossidico anticorrosivo")
+            - "note_tecniche": stringa (Considerazioni di calcolo rigorose: sezioni maggiorate per garantire margini di sicurezza conservativi contro carichi neve e vento estremi, nodi irrigiditi e verificati a rottura duttile.)
             
             Testo da analizzare:
             "{testo_commerciale}"
             """
             
-            with st.spinner('L\'ingegnere virtuale sta calcolando sezioni, protezione al fuoco e dettagli esecutivi delle connessioni...'):
+            with st.spinner('L\'ingegnere virtuale sta ricalcolando il dimensionamento con criteri di sicurezza conservativi...'):
                 risposta_ia = model.generate_content(prompt)
                 testo_risposta = risposta_ia.text.strip()
                 if testo_risposta.startswith("```json"):
@@ -86,7 +87,7 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
                 
                 dati = json.loads(testo_risposta.strip())
                 
-                st.success("Dimensionamento strutturale e nodale completato con successo!")
+                st.success("Dimensionamento strutturale conservativo completato con successo!")
                 
                 # Sezione 1: Parametri geometrici e ambientali
                 st.markdown("### 📍 1. Dati geometrici e climatici")
@@ -155,8 +156,8 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
                 
                 st.markdown("---")
                 
-                # Sezione 6: Dettaglio Connessioni e Nodi
-                st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni e Nodi")
+                # Sezione 6: Dettaglio Connessioni e Nodi (Rafforzato)
+                st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni e Nodi (Configurazione Pesante)")
                 
                 col_n1, col_n2 = st.columns(2)
                 
