@@ -29,7 +29,7 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
     if not api_key:
         st.error("Inserisci prima l'API Key nella barra laterale!")
     elif not testo_commerciale:
-        st.warning("Ingloba del testo da analizzare.")
+        st.warning("Incolla del testo da analizzare.")
     else:
         genai.configure(api_key=api_key)
         try:
@@ -47,13 +47,15 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             - "qsk": float (carico neve al suolo in kN/m², se non specificato 1.50)
             - "interasse_portali": float (in metri, se non specificato 6.0)
             - "interasse_arcarecci": float (in metri, se non specificato 1.5)
-            - "luce_arcarecci": float (in metri, massima luce degli arcarecci)
             - "sezione_arcarecci": stringa (es. "Lamellare GL24h - 120x240 mm")
             - "verifica_arcarecci": stringa (es. "Verificato a flessione e freccia")
             - "sezione_travi_tetto": stringa (es. "Lamellare GL24h - 160x520 mm")
             - "sezione_pilastri": stringa (es. "Lamellare GL24h - 200x400 mm o Profilo HEB 200")
-            - "controventi_copertura": stringa (es. "Croci di sgheriglio in fune d'acciaio / Tavole")
-            - "note_tecniche": stringa (breve sintesi delle considerazioni di calcolo e resistenza al fuoco)
+            - "controventi_copertura_tipo": stringa (es. "Croci di sgheriglio in tondo d'acciaio Ø16 o funi con tenditori")
+            - "controventi_copertura_pos": stringa (es. "N° 2 campi di falda in corrispondenza delle campate di testata")
+            - "controventi_parete_tipo": stringa (es. "Diagonali verticali in acciaio / baraccatura di parete in legno")
+            - "controventi_parete_pos": stringa (es. "Campate perimetrali di testata e pareti longitudinali")
+            - "note_tecniche": stringa (breve sintesi delle considerazioni di calcolo, vento, neve e resistenza al fuoco)
             
             Testo da analizzare:
             "{testo_commerciale}"
@@ -81,29 +83,42 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
                 
                 st.markdown("---")
                 
-                # Sezione 2: Dimensionamento Elementi Strutturali
+                # Sezione 2: Dimensionamento Elementi Strutturali Principali
                 st.markdown("### 📐 2. Proposta Sezioni e Dimensionamento Elementi")
                 
                 col_a, col_b = st.columns(2)
                 
                 with col_a:
                     st.markdown("#### Arcarecci di Copertura")
-                    st.info(f"**Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')}")
-                    st.write(f"- **Luce statica max:** {dati.get('luce_arcarecci', 6.0)} m")
+                    st.info(f"**Sezione:** {dati.get('sezione_arcarecci', 'N.D.')}")
                     st.write(f"- **Stato Verifiche:** {dati.get('verifica_arcarecci', 'Verificato')} ")
                     
                     st.markdown("#### Travi Principali / Portali")
-                    st.success(f"**Sezione Consigliata:** {dati.get('sezione_travi_tetto', 'N.D.')}")
+                    st.success(f"**Sezione:** {dati.get('sezione_travi_tetto', 'N.D.')}")
                 
                 with col_b:
                     st.markdown("#### Pilastri")
-                    st.warning(f"**Sezione Consigliata:** {dati.get('sezione_pilastri', 'N.D.')}")
-                    
-                    st.markdown("#### Stabilizzazione e Controventi")
-                    st.write(f"- **Sistema:** {dati.get('controventi_copertura', 'Presenti')} ")
+                    st.warning(f"**Sezione:** {dati.get('sezione_pilastri', 'N.D.')}")
                 
                 st.markdown("---")
-                st.markdown("### 📝 3. Relazione e Note Tecniche")
+                
+                # Sezione 3: Controventi e Stabilizzazione (SEPARATI COPERTURA E PARETE)
+                st.markdown("### 🔗 3. Stabilizzazione e Controventi")
+                
+                col_cv1, col_cv2 = st.columns(2)
+                
+                with col_cv1:
+                    st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
+                    st.write(f"- **Tipologia:** {dati.get('controventi_copertura_tipo', 'N.D.')}")
+                    st.write(f"- **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
+                
+                with col_cv2:
+                    st.markdown("#### 🧱 Controventi di Parete (Baraccatura)")
+                    st.write(f"- **Tipologia:** {dati.get('controventi_parete_tipo', 'N.D.')}")
+                    st.write(f"- **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
+                
+                st.markdown("---")
+                st.markdown("### 📝 4. Relazione e Note Tecniche")
                 st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
                     
         except Exception as e:
