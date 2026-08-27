@@ -128,7 +128,6 @@ if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma e Carichi)", t
     if not api_key:
         st.error("Inserisci prima l'API Key nella barra laterale!")
     else:
-        # Stringa riassuntiva dei carichi scelti dall'utente da passare all'IA
         impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
         dati_carichi_str = f"""
         --- PARAMETRI CARICHI COPERTURA SCELTI ---
@@ -152,7 +151,12 @@ if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma e Carichi)", t
                 
                 prompt = f"""
 Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018 (Neve, Vento, Sisma, carichi permanenti di copertura e fotovoltaico) e nodi esecutivi.
-Analizza il testo tecnico fornito (che include i carichi specificati di pannellatura, fotovoltaico ed eventuale carico manuale) e calcola un predimensionamento strutturale conservativo e rigoroso.
+Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e rigoroso.
+
+REGOLA FONDAMENTALE per i controventi e la stabilizzazione:
+- Le chiavi "controventi_copertura_legno" e "controventi_parete_legno" DEVONO contenere esclusivamente soluzioni con elementi in LEGNO (es. diagonali in legno lamellare, controventi lignei o pannelli a taglio in legno). NON inserire acciaio in queste chiavi.
+- Le chiavi "controventi_copertura_acciaio" e "controventi_parete_acciaio" DEVONO contenere esclusivamente soluzioni con PROFILI IN ACCIAIO (es. tubolari, profilati angolari, croci di Sant'Andrea in acciaio).
+
 Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown di alcun tipo, inizia con '{' e finisci con '}') con queste esatte chiavi:
 - "luogo": stringa
 - "qsk": float
@@ -175,11 +179,11 @@ Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markd
 - "pilastri_legno": stringa
 - "pilastri_acciaio": stringa
 - "pilastri_cap": stringa
-- "controventi_copertura_legno": stringa
-- "controventi_copertura_acciaio": stringa
+- "controventi_copertura_legno": stringa (solo elementi in legno lamellare / lignei)
+- "controventi_copertura_acciaio": stringa (solo profili in acciaio)
 - "controventi_copertura_pos": stringa
-- "controventi_parete_legno": stringa
-- "controventi_parete_acciaio": stringa
+- "controventi_parete_legno": stringa (solo elementi in legno lamellare / lignei)
+- "controventi_parete_acciaio": stringa (solo profili in acciaio)
 - "controventi_parete_pos": stringa
 - "conn_trave_pilastro_tipo": stringa
 - "conn_trave_pilastro_elementi": stringa
@@ -207,7 +211,6 @@ Testo da analizzare:
                         testo_risposta = testo_risposta[:-3]
                     
                     dati = json.loads(testo_risposta.strip())
-                    # Assicuriamoci che i valori scelti manualmente siano sempre coerenti nel dizionario sessione
                     dati['tipo_isolante'] = tipo_isolante
                     dati['spessore_pannello'] = f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice"
                     dati['impianto_fv_desc'] = impianto_fv_desc
