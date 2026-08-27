@@ -12,11 +12,12 @@ def genera_word_report(dati):
     doc = Document()
     doc.add_heading('Relazione Tecnica di Predimensionamento (NTC 2018)', 0)
     
-    doc.add_heading('1. Parametri Geometrici, Climatici, Sismici e di Carico', level=1)
+    doc.add_heading('1. Parametri Geometrici, Climatici, Sismici e di Configurazione', level=1)
     doc.add_paragraph(f"Località: {dati.get('luogo', 'Bolzano')}")
     doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')} | Classe d'Uso: {dati.get('classe_uso', 'N.D.')} | Fattore q: {dati.get('fattore_struttura_q', 'N.D.')}")
+    doc.add_paragraph(f"Configurazione Telaio: {dati.get('num_appoggi', 2)} Appoggi | Tipologia Travatura: {dati.get('tipo_travatura', 'N.D.')}")
     doc.add_paragraph(f"Interasse Portali: {dati.get('interasse_portali', 6.0)} m | Interasse Arcarecci (Passo): {dati.get('interasse_arcarecci', 1.5)} m")
     doc.add_paragraph(f"Copertura / Pannello: {dati.get('tipo_isolante', 'N.D.')} - Spessore: {dati.get('spessore_pannello', 'N.D.')}")
     doc.add_paragraph(f"Impianto Fotovoltaico: {dati.get('impianto_fv_desc', 'Escluso')} | Carico Extra Manuale: {dati.get('carico_aggiuntivo', 0.0)} kN/m²")
@@ -31,7 +32,7 @@ def genera_word_report(dati):
     doc.add_paragraph(f"Acciaio: {dati.get('travi_acciaio', 'N.D.')}")
     doc.add_paragraph(f"C.a.p.: {dati.get('travi_cap', 'N.D.')}")
     
-    doc.add_heading('4. Pilastri (Confronto 3 Materiali)', level=1)
+    doc.add_heading('4. Pilastri (Perimetrali e Intermedi)', level=1)
     doc.add_paragraph(f"Legno Lamellare: {dati.get('pilastri_legno', 'N.D.')}")
     doc.add_paragraph(f"Acciaio: {dati.get('pilastri_acciaio', 'N.D.')}")
     doc.add_paragraph(f"C.a.p.: {dati.get('pilastri_cap', 'N.D.')}")
@@ -44,11 +45,12 @@ def genera_word_report(dati):
     doc.add_paragraph(f"  - Opzione Legno: {dati.get('controventi_parete_legno', 'N.D.')}")
     doc.add_paragraph(f"  - Opzione Acciaio: {dati.get('controventi_parete_acciaio', 'N.D.')}")
     
-    doc.add_heading('6. Dettaglio Connessioni e Nodi', level=1)
+    doc.add_heading('6. Dettaglio Connessioni, Nodi e Giunti in Colmo', level=1)
     doc.add_paragraph(f"Connessione Trave/Pilastro: {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
     doc.add_paragraph(f"  - Elementi: {dati.get('conn_trave_pilastro_elementi', 'N.D.')} | Peso: {dati.get('conn_trave_pilastro_kg', 'N.D.')}")
     doc.add_paragraph(f"Connessione Pilastro/Fondazione: {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
     doc.add_paragraph(f"  - Ancoraggi: {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')} | Peso: {dati.get('conn_pilastro_fondazione_kg', 'N.D.')}")
+    doc.add_paragraph(f"Giunto in Colmo (se previsto): {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
     
     doc.add_heading('7. Protezione Antincendio', level=1)
     doc.add_paragraph(f"Classe Resistenza al Fuoco: {dati.get('classe_resistenza_fuoco', 'N.D.')}")
@@ -99,10 +101,17 @@ if file_cad_caricato is not None:
 
 testo_commerciale = st.text_area(
     "Incolla qui le note del progetto o il capitolato:", 
-    height=120,
+    height=100,
     value="",
     placeholder="Incolla qui le note del progetto, i dati dimensionali, il luogo di costruzione o le richieste specifiche del capitolato..."
 )
+
+st.markdown("### 🏛️ Configurazione Geometrica del Telaio e della Travatura")
+col_g1, col_g2 = st.columns(2)
+with col_g1:
+    tipo_travatura = st.selectbox("Tipologia Travatura di Copertura", ["Bi-falda semplice", "Bi-falda con intradosso curvo", "Trave di falda giuntata in colmo"])
+with col_g2:
+    num_appoggi = st.selectbox("Numero di Appoggi del Telaio", [2, 3, 4], format_func=lambda x: f"{x} Appoggi ({'Campata Unica' if x==2 else f'Multi-campata con {x-2} pilastro/i interno/i'})")
 
 st.markdown("### ⚙️ Parametri Carichi di Copertura e Pannellature")
 col_c1, col_c2, col_c3 = st.columns(3)
@@ -124,20 +133,22 @@ with col_c2:
 with col_c3:
     carico_aggiuntivo = st.number_input("Carico aggiuntivo manuale (kN/mq)", min_value=0.0, value=0.0, step=0.05, format="%.2f")
 
-if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma e Carichi)", type="primary"):
+if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma e Configurazione)", type="primary"):
     if not api_key:
         st.error("Inserisci prima l'API Key nella barra laterale!")
     else:
         impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
-        dati_carichi_str = f"""
-        --- PARAMETRI CARICHI COPERTURA SCELTI ---
+        dati_config_str = f"""
+        --- CONFIGURAZIONE GEOMETRICA E CARICHI SCELTI ---
+        - Tipologia Travatura: {tipo_travatura}
+        - Numero Appoggi Telaio: {num_appoggi} appoggi
         - Tipologia Pannello: {tipo_isolante}
         - Spessore Pannello: {spessore_pannello} mm
         - Impianto Fotovoltaico: {impianto_fv_desc}
         - Carico Permanente Aggiuntivo Manuale: {carico_aggiuntivo} kN/mq
         """
         
-        testo_totale_analisi = testo_commerciale + "\n\n" + dati_carichi_str + "\n\n--- NOTE DAL CAD ---\n" + testo_da_cad
+        testo_totale_analisi = testo_commerciale + "\n\n" + dati_config_str + "\n\n--- NOTE DAL CAD ---\n" + testo_da_cad
         
         if not testo_totale_analisi.strip():
             st.warning("Inserisci del testo nel riquadro o carica un file CAD prima di eseguire il dimensionamento.")
@@ -150,12 +161,14 @@ if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma e Carichi)", t
                 )
                 
                 prompt = f"""
-Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018 (Neve, Vento, Sisma, carichi permanenti di copertura e fotovoltaico) e nodi esecutivi.
-Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e rigoroso.
+Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018 (Neve, Vento, Sisma, carichi di copertura, schemi statici a 2/3/4 appoggi, travi a intradosso curvo o giuntate in colmo) e nodi esecutivi.
+Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e rigoroso, tenendo conto esplicitamente di:
+1. La geometria della travatura scelta ({tipo_travatura}). Se è "Trave di falda giuntata in colmo", dimensiona anche la piastra di giunzione bullonata in colmo.
+2. Lo schema statico del telaio con {num_appoggi} appoggi (considerando eventuali pilastri intermedi per 3 o 4 appoggi).
 
-REGOLA FONDAMENTALE per i controventi e la stabilizzazione:
-- Le chiavi "controventi_copertura_legno" e "controventi_parete_legno" DEVONO contenere esclusivamente soluzioni con elementi in LEGNO (es. diagonali in legno lamellare, controventi lignei o pannelli a taglio in legno). NON inserire acciaio in queste chiavi.
-- Le chiavi "controventi_copertura_acciaio" e "controventi_parete_acciaio" DEVONO contenere esclusivamente soluzioni con PROFILI IN ACCIAIO (es. tubolari, profilati angolari, croci di Sant'Andrea in acciaio).
+REGOLA FONDAMENTALE per i controventi:
+- Le chiavi "controventi_copertura_legno" e "controventi_parete_legno" DEVONO contenere esclusivamente soluzioni con elementi in LEGNO (es. diagonali in legno lamellare).
+- Le chiavi "controventi_copertura_acciaio" e "controventi_parete_acciaio" DEVONO contenere esclusivamente soluzioni con PROFILI IN ACCIAIO.
 
 Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown di alcun tipo, inizia con '{' e finisci con '}') con queste esatte chiavi:
 - "luogo": stringa
@@ -165,6 +178,8 @@ Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markd
 - "zona_sismica": stringa
 - "classe_uso": stringa
 - "fattore_struttura_q": stringa
+- "tipo_travatura": stringa
+- "num_appoggi": int
 - "interasse_portali": float
 - "interasse_arcarecci": float
 - "tipo_isolante": stringa
@@ -179,11 +194,11 @@ Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markd
 - "pilastri_legno": stringa
 - "pilastri_acciaio": stringa
 - "pilastri_cap": stringa
-- "controventi_copertura_legno": stringa (solo elementi in legno lamellare / lignei)
-- "controventi_copertura_acciaio": stringa (solo profili in acciaio)
+- "controventi_copertura_legno": stringa
+- "controventi_copertura_acciaio": stringa
 - "controventi_copertura_pos": stringa
-- "controventi_parete_legno": stringa (solo elementi in legno lamellare / lignei)
-- "controventi_parete_acciaio": stringa (solo profili in acciaio)
+- "controventi_parete_legno": stringa
+- "controventi_parete_acciaio": stringa
 - "controventi_parete_pos": stringa
 - "conn_trave_pilastro_tipo": stringa
 - "conn_trave_pilastro_elementi": stringa
@@ -191,6 +206,7 @@ Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markd
 - "conn_pilastro_fondazione_tipo": stringa
 - "conn_pilastro_fondazione_elementi": stringa
 - "conn_pilastro_fondazione_kg": stringa
+- "dettaglio_giunto_colmo": stringa
 - "classe_resistenza_fuoco": stringa
 - "mq_intumescente": stringa
 - "dettaglio_verniciatura": stringa
@@ -200,7 +216,7 @@ Testo da analizzare:
 "{testo_totale_analisi}"
                 """
                 
-                with st.spinner('Elaborazione calcoli strutturali tenendo conto dei carichi in copertura (NTC 2018)...'):
+                with st.spinner('Elaborazione calcoli strutturali avanzati (Geometria, Schema a piú appoggi, NTC 2018)...'):
                     risposta_ia = model.generate_content(prompt)
                     testo_risposta = risposta_ia.text.strip()
                     if testo_risposta.startswith("```json"):
@@ -211,13 +227,15 @@ Testo da analizzare:
                         testo_risposta = testo_risposta[:-3]
                     
                     dati = json.loads(testo_risposta.strip())
+                    dati['tipo_travatura'] = tipo_travatura
+                    dati['num_appoggi'] = num_appoggi
                     dati['tipo_isolante'] = tipo_isolante
                     dati['spessore_pannello'] = f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice"
                     dati['impianto_fv_desc'] = impianto_fv_desc
                     dati['carico_aggiuntivo'] = carico_aggiuntivo
                     
                     st.session_state['dati_ultimi'] = dati
-                    st.success("Dimensionamento con carichi di copertura completato con successo!")
+                    st.success("Dimensionamento strutturale avanzato completato con successo!")
                     
             except Exception as e:
                 st.error(f"Errore durante l'elaborazione: {e}")
@@ -240,7 +258,7 @@ if 'dati_ultimi' in st.session_state:
     
     st.markdown("---")
     
-    st.markdown("### 📍 1. Dati geometrici, climatici, sismici e di carico (NTC 2018)")
+    st.markdown("### 📍 1. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Località", dati.get("luogo", "Bolzano"))
     c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
@@ -248,8 +266,8 @@ if 'dati_ultimi' in st.session_state:
     c4.metric("Zona Sismica", dati.get("zona_sismica", "Zona 2"))
     
     c5, c6, c7 = st.columns(3)
-    c5.metric("Pressione Vento", dati.get("pressione_vento", "0.80 kN/m²"))
-    c6.metric("Classe d'Uso", dati.get("classe_uso", "Classe II"))
+    c5.metric("Schema Telaio", f"{dati.get('num_appoggi', 2)} Appoggi")
+    c6.metric("Travatura", dati.get("tipo_travatura", "Bi-falda semplice"))
     c7.metric("Fattore di Struttura", dati.get("fattore_struttura_q", "q = 2.0"))
     
     st.info(f"🏗️ **Copertura configurata:** Pannello {dati.get('tipo_isolante')} ({dati.get('spessore_pannello')}) | **Impianto FV:** {dati.get('impianto_fv_desc')} | **Carico Extra:** {dati.get('carico_aggiuntivo', 0.0)} kN/mq")
@@ -272,7 +290,7 @@ if 'dati_ultimi' in st.session_state:
         st.error(dati.get('travi_cap', 'N.D.'))
     
     st.markdown("---")
-    st.markdown("### 🏛️ 4. Pilastri (Confronto Tecnologico)")
+    st.markdown("### 🏛️ 4. Pilastri (Perimetrali e Intermedi)")
     col_p1, col_p2, col_p3 = st.columns(3)
     with col_p1:
         st.markdown("#### 🌲 Legno Lamellare")
@@ -299,7 +317,7 @@ if 'dati_ultimi' in st.session_state:
         st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
     
     st.markdown("---")
-    st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni e Nodi")
+    st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni, Nodi e Giunto in Colmo")
     col_n1, col_n2 = st.columns(2)
     with col_n1:
         st.markdown("#### 🔗 Connessione Pilastro / Trave di Copertura")
@@ -311,6 +329,9 @@ if 'dati_ultimi' in st.session_state:
         st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
         st.write(f"- **Ancoraggi:** {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')}")
         st.metric("Peso Acciaio Ancoraggi/Piastra", dati.get('conn_pilastro_fondazione_kg', 'N.D.'))
+    
+    if dati.get('tipo_travatura') == "Trave di falda giuntata in colmo":
+        st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
     
     st.markdown("---")
     st.markdown("### 🔥 7. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
