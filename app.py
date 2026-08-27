@@ -135,25 +135,25 @@ def genera_modello_3d(dati):
             name=''
         ))
 
-    # 3. CONTROVENTI DI COPERTURA (Falda a croce di Sant'Andrea) nelle campate di estremità
+    # 3. CONTROVENTI DI COPERTURA (Falda a croce di Sant'Andrea pulita) nelle campate di estremità
     bay_pairs = [(y_portali[0], y_portali[1]), (y_portali[-2], y_portali[-1])]
     for y_start, y_end in bay_pairs:
-        # Falda sinistra
+        # Falda Sinistra (da x=0 a x=luce_totale/2)
         fig.add_trace(go.Scatter3d(
-            x=[0, luce_totale/2, None, luce_totale/2, 0],
+            x=[0.0, luce_totale/2.0, None, luce_totale/2.0, 0.0],
             y=[y_start, y_end, None, y_start, y_end],
-            z=[altezza_gronda, altezza_colmo, None, altezza_colmo, altezza_gronda],
+            z=[altezza_gronda, altezza_colmo, None, altezza_gronda, altezza_gronda], # Diagonali corrette da gronda a colmo
             mode='lines',
-            line=dict(color='forestgreen', width=3),
+            line=dict(color='forestgreen', width=4),
             name='Controventi di Copertura' if y_start == y_portali[0] else ''
         ))
-        # Falda destra
+        # Falda Destra (da x=luce_totale/2 a x=luce_totale)
         fig.add_trace(go.Scatter3d(
-            x=[luce_totale/2, luce_totale, None, luce_totale, luce_totale/2],
+            x=[luce_totale/2.0, luce_totale, None, luce_totale, luce_totale/2.0],
             y=[y_start, y_end, None, y_start, y_end],
-            z=[altezza_colmo, altezza_gronda, None, altezza_colmo, altezza_gronda],
+            z=[altezza_colmo, altezza_gronda, None, altezza_gronda, altezza_colmo],
             mode='lines',
-            line=dict(color='forestgreen', width=3),
+            line=dict(color='forestgreen', width=4),
             name=''
         ))
 
@@ -163,9 +163,9 @@ def genera_modello_3d(dati):
             fig.add_trace(go.Scatter3d(
                 x=[x_wall, x_wall, None, x_wall, x_wall],
                 y=[y_start, y_end, None, y_start, y_end],
-                z=[0, altezza_gronda, None, altezza_gronda, 0],
+                z=[0.0, altezza_gronda, None, altezza_gronda, 0.0],
                 mode='lines',
-                line=dict(color='darkorange', width=3),
+                line=dict(color='darkorange', width=4),
                 name='Controventi di Parete' if x_wall == 0.0 and y_start == y_portali[0] else ''
             ))
 
