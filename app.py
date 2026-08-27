@@ -7,6 +7,7 @@ import ezdxf
 import tempfile
 import os
 import plotly.graph_objects as go
+import PyPDF2
 
 # --- FUNZIONE PER GENERARE IL DOCUMENTO WORD STANDARD ---
 def genera_word_report(dati):
@@ -237,33 +238,46 @@ st.title("Generatore Offerte Tecniche e Dimensionamento IA 🏗️")
 with st.sidebar:
     st.header("Impostazioni IA")
     api_key = st.text_input("Inserisci qui la tua API Key di Google", type="password")
-    st.info("L'API Key serve per far leggere il capitolato all'Intelligenza Artificiale.")
+    st.info("L'API Key serve per far leggere i capitolati all'Intelligenza Artificiale.")
 
-st.subheader("Analisi Capitolato / Appunti di Progetto e File CAD")
+st.subheader("Analisi Capitolato / Appunti di Progetto e File (CAD o PDF)")
 
-file_cad_caricato = st.file_uploader("📂 Carica un file CAD (.dxf) con le specifiche o note del progetto (facoltativo)", type=["dxf"])
+file_caricato = st.file_uploader("📂 Carica un file CAD (.dxf) o un documento PDF (.pdf)", type=["dxf", "pdf"])
 
-testo_da_cad = ""
-if file_cad_caricato is not None:
+testo_estratto_file = ""
+if file_caricato is not None:
+    estensione = file_caricato.name.split('.')[-1].lower()
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp_file:
-            tmp_file.write(file_cad_caricato.getvalue())
-            tmp_path = tmp_file.name
-        
-        doc_dxf = ezdxf.readfile(tmp_path)
-        msp = doc_dxf.modelspace()
-        testi_estratto = []
-        for entity in msp:
-            if entity.dxftype() == 'TEXT':
-                testi_estratto.append(entity.dxf.text)
-            elif entity.dxftype() == 'MTEXT':
-                testi_estratto.append(entity.text)
-        
-        testo_da_cad = "\n".join(testi_estratto)
-        st.success(f"File CAD '{file_cad_caricato.name}' letto con successo!")
-        os.unlink(tmp_path)
+        if estensione == 'dxf':
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp_file:
+                tmp_file.write(file_caricato.getvalue())
+                tmp_path = tmp_file.name
+            
+            doc_dxf = ezdxf.readfile(tmp_path)
+            msp = doc_dxf.modelspace()
+            testi_estratto = []
+            for entity in msp:
+                if entity.dxftype() == 'TEXT':
+                    testi_estratto.append(entity.dxf.text)
+                elif entity.dxftype() == 'MTEXT':
+                    testi_estratto.append(entity.text)
+            
+            testo_estratto_file = "\n".join(testi_estratto)
+            st.success(f"File CAD '{file_caricato.name}' letto con successo!")
+            os.unlink(tmp_path)
+            
+        elif estensione == 'pdf':
+            pdf_reader = PyPDF2.PdfReader(file_caricato)
+            testi_pdf = []
+            for page in pdf_reader.pages:
+                testo_pagina = page.extract_text()
+                if testo_pagina:
+                    testi_pdf.append(testo_pagina)
+            testo_estratto_file = "\n".join(testi_pdf)
+            st.success(f"File PDF '{file_caricato.name}' letto con successo!")
+            
     except Exception as e:
-        st.error(f"Errore nella lettura del file DXF: {e}")
+        st.error(f"Errore nella lettura del file: {e}")
 
 testo_commerciale = st.text_area(
     "Incolla qui le note del progetto o il capitolato:", 
@@ -332,10 +346,10 @@ if st.button("Esegui Dimensionamento Dinamico e Modello 3D", type="primary"):
         - Carico Permanente Aggiuntivo Manuale: {carico_aggiuntivo} kN/mq
         """
         
-        testo_totale_analisi = testo_commerciale + "\n\n" + dati_config_str + "\n\n--- NOTE DAL CAD ---\n" + testo_da_cad
+        testo_totale_analisi = testo_commerciale + "\n\n" + dati_config_str + "\n\n--- NOTE DAL FILE ALLEGATO ---\n" + testo_estratto_file
         
         if not testo_totale_analisi.strip():
-            st.warning("Inserisci del testo nel riquadro o carica un file CAD prima di eseguire il dimensionamento.")
+            st.warning("Inserisci del testo nel riquadro o carica un file prima di eseguire il dimensionamento.")
         else:
             genai.configure(api_key=api_key)
             try:
@@ -346,7 +360,7 @@ if st.button("Esegui Dimensionamento Dinamico e Modello 3D", type="primary"):
                 
                 prompt = f"""
 Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018 (Neve, Vento, Sisma, carichi di copertura, schemi statici a 2/3/4 appoggi, travi a intradosso curvo o giuntate in colmo) e nodi esecutivi.
-Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e rigoroso.
+Analizza il testo tecnico fornito (testo libero e file estratti) e calcola un predimensionamento strutturale conservativo e rigoroso.
 
 Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown di alcun tipo, inizia con '{' e finisci con '}') con queste esatte chiavi:
 - "luogo": stringa
