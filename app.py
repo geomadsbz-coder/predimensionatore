@@ -118,4 +118,129 @@ def genera_word_report(dati):
 
     add_section_title("6. Dettaglio Connessioni e Nodi Strutturali")
     add_styled_paragraph(doc, f"• Nodo Pilastro / Trave: {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
-    add_styled_paragraph(doc, f"    - Elementi: {dati.get('conn_trave_pilastro_elementi', 'N.D.')} — Peso: {dati.get('conn_trave_
+    add_styled_paragraph(doc, f"    - Elementi: {dati.get('conn_trave_pilastro_elementi', 'N.D.')} — Peso: {dati.get('conn_trave_pilastro_kg', 'N.D.')}")
+    add_styled_paragraph(doc, f"• Base Pilastro / Fondazione: {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
+    add_styled_paragraph(doc, f"    - Ancoraggi: {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')} — Peso: {dati.get('conn_pilastro_fondazione_kg', 'N.D.')}")
+
+    add_section_title("7. Protezione Antincendio")
+    add_styled_paragraph(doc, f"• Classe di Resistenza al Fuoco: {dati.get('classe_resistenza_fuoco', 'R 60')}")
+    add_styled_paragraph(doc, f"• Superficie Acciaio da Trattare: {dati.get('mq_intumescente', 'N.D.')}")
+    add_styled_paragraph(doc, f"• Ciclo Antincendio: {dati.get('dettaglio_verniciatura', 'N.D.')}")
+
+    add_section_title("8. Note Tecniche e Considerazioni Finali")
+    add_styled_paragraph(doc, dati.get('note_tecniche', 'Nessuna nota aggiuntiva.'))
+
+    p_footer = doc.add_paragraph()
+    p_footer.paragraph_format.space_before = Pt(24)
+    r_foot = p_footer.add_run("Documento generato automaticamente tramite generatore interno WolfSystem | Uso tecnico e commerciale preliminare.")
+    r_foot.font.size = Pt(8)
+    r_foot.font.color.rgb = RGBColor(120, 120, 120)
+
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+    return file_stream
+
+# --- CONFIGURAZIONE INTERFACCIA ---
+st.set_page_config(page_title="Predimensionamento Strutturale IA", layout="wide")
+st.title("Generatore Offerte Tecniche e Dimensionamento IA 🏗️")
+
+with st.sidebar:
+    st.header("Impostazioni IA")
+    api_key = st.text_input("Inserisci qui la tua API Key di Google", type="password")
+    st.info("L'API Key serve per far leggere il capitolato all'Intelligenza Artificiale.")
+    st.markdown("---")
+    st.markdown("**WolfSystem / Tecnico:** Generazione report su carta intestata, calcoli Neve, Vento, Sisma (NTC 2018) e nodi.")
+
+st.subheader("Analisi Capitolato / Appunti di Progetto e File CAD")
+
+file_cad_caricato = st.file_uploader("📂 Carica un file CAD (.dxf) con le specifiche o note del progetto (facoltativo)", type=["dxf"])
+
+testo_da_cad = ""
+if file_cad_caricato is not None:
+    bytes_data = file_cad_caricato.read()
+    stream = io.BytesIO(bytes_data)
+    doc_dxf = ezdxf.read(stream)
+    msp = doc_dxf.modelspace()
+    testi_estratto = []
+    for entity in msp:
+        if entity.dxftype() == 'TEXT':
+            testi_estratto.append(entity.dxf.text)
+        elif entity.dxftype() == 'MTEXT':
+            testi_estratto.append(entity.text)
+    testo_da_cad = "\n".join(testi_estratto)
+    st.success(f"File CAD '{file_cad_caricato.name}' letto con successo!")
+
+testo_commerciale = st.text_area(
+    "Incolla qui le note del progetto o il capitolato:", 
+    height=150,
+    value="",
+    placeholder="Incolla qui le note del progetto, i dati dimensionali, il luogo di costruzione o le richieste specifiche del capitolato..."
+)
+
+if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma)", type="primary"):
+    if not api_key:
+        st.error("Inserisci prima l'API Key nella barra laterale!")
+    else:
+        testo_totale_analisi = testo_commerciale + "\n\n--- NOTE DAL CAD ---\n" + testo_da_cad
+        if not testo_totale_analisi.strip():
+            st.warning("Inserisci del testo nel riquadro o carica un file CAD prima di eseguire il dimensionamento.")
+        else:
+            genai.configure(api_key=api_key)
+            try:
+                model = genai.GenerativeModel(
+                    model_name='gemini-3.6-flash',
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                
+                prompt = f'''
+                Sei un ingegnere strutturista senior in WolfSystem, esperto in prefabbricazione, NTC 2018 (analisi combinata Neve, Vento e Sisma) e nodi esecutivi.
+                Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo. In particolare, deduci rigorosamente:
+                1. I parametri neve (qsk) e vento (Zona Vento, pressione).
+                2. I parametri sismici secondo NTC 2018 in base alla località (Zona Sismica, accelerazione di picco ag, Classe d'Uso della costruzione e Fattore di struttura q).
+                
+                Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown) con queste chiavi esatte:
+                - "luogo": stringa
+                - "qsk": float
+                - "zona_vento": stringa
+                - "pressione_vento": stringa
+                - "zona_sismica": stringa
+                - "classe_uso": stringa
+                - "fattore_struttura_q": stringa
+                - "interasse_portali": float
+                - "interasse_arcarecci": float
+                - "sezione_arcarecci": stringa
+                - "verifica_arcarecci": stringa
+                - "travi_legno": stringa
+                - "travi_acciaio": stringa
+                - "travi_cap": stringa
+                - "pilastri_legno": stringa
+                - "pilastri_acciaio": stringa
+                - "pilastri_cap": stringa
+                - "controventi_copertura_legno": stringa
+                - "controventi_copertura_acciaio": stringa
+                - "controventi_copertura_pos": stringa
+                - "controventi_parete_legno": stringa
+                - "controventi_parete_acciaio": stringa
+                - "controventi_parete_pos": stringa
+                - "conn_trave_pilastro_tipo": stringa
+                - "conn_trave_pilastro_elementi": stringa
+                - "conn_trave_pilastro_kg": stringa
+                - "conn_pilastro_fondazione_tipo": stringa
+                - "conn_pilastro_fondazione_elementi": stringa
+                - "conn_pilastro_fondazione_kg": stringa
+                - "classe_resistenza_fuoco": stringa
+                - "mq_intumescente": stringa
+                - "dettaglio_verniciatura": stringa
+                - "note_tecniche": stringa
+                
+                Testo:
+                "{testo_totale_analisi}"
+                '''
+                
+                with st.spinner('Elaborazione calcoli strutturali (Neve, Vento, Sisma NTC 2018)...'):
+                    risposta_ia = model.generate_content(prompt)
+                    testo_risposta = risposta_ia.text.strip()
+                    if testo_risposta.startswith("```json"):
+                        testo_risposta = testo_risposta[7:]
+                    if testo_risposta.endswith("
