@@ -224,7 +224,6 @@ def genera_modello_3d(dati):
                 showlegend=False
             ))
 
-    # Controllo sicuro e conversione della lista indici controventi
     raw_indici = dati.get('campate_controventi_indici', [0, num_campate - 1])
     if isinstance(raw_indici, list):
         campate_controventi = [int(i) for i in raw_indici if isinstance(i, (int, float))]
@@ -495,7 +494,7 @@ Testo da analizzare:
                 
         except Exception as e:
             st.error("⚠️ Si è verificato un errore durante l'elaborazione:")
-            st.exception(e) # Mostra l'errore dettagliato a schermo per debugging immediato
+            st.exception(e)
 
 if 'dati_ultimi' in st.session_state:
     dati = st.session_state['dati_ultimi']
