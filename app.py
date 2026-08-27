@@ -12,10 +12,6 @@ import numpy as np
 
 # --- MOTORE DI CALCOLO STRUTTURALE ANALITICO (NTC 2018) ---
 def esegui_calcolo_strutturale_rigoroso(dati_geo):
-    """
-    Esegue il calcolo agli elementi finiti / analitico semplificato per ricavare
-    sollecitazioni e sezioni verificate in base a carichi permanenti, neve e vento.
-    """
     luce = dati_geo['luce_totale']
     interasse = dati_geo['interasse_portali']
     h_gronda = dati_geo['altezza_gronda']
@@ -23,36 +19,29 @@ def esegui_calcolo_strutturale_rigoroso(dati_geo):
     num_appoggi = dati_geo['num_appoggi']
     qsk = dati_geo.get('qsk', 1.5)
     
-    # Valutazione Carichi al mq (kN/mq)
-    g1 = 0.15 # Peso proprio struttura stimato
-    g2 = 0.25 # Pannello isolante + impianti / fotovoltaico (se presente)
+    g1 = 0.15 
+    g2 = 0.25 
     if "Presente" in dati_geo.get('impianto_fv_desc', ''):
         g2 += 0.20
     g2 += dati_geo.get('carico_aggiuntivo', 0.0)
     
-    # Neve e Vento (NTC 2018)
-    s = qsk * 1.0 # Valore di calcolo neve
-    
-    # Carico Totale Lineare Ultimo (SLU) q_ed = 1.3*G1 + 1.5*G2 + 1.5*Q_neve
+    s = qsk * 1.0 
     q_ed = interasse * (1.3 * g1 + 1.5 * g2 + 1.5 * s)
     
-    # Momento flettente massimo approssimato per portale pluricampata
     if num_appoggi >= 3:
         luce_campata = luce / (num_appoggi - 1)
-        m_ed = (q_ed * (luce_campata ** 2)) / 10.0 # kNm
-        v_ed = (q_ed * luce_campata) / 2.0        # kN
+        m_ed = (q_ed * (luce_campata ** 2)) / 10.0 
+        v_ed = (q_ed * luce_campata) / 2.0        
     else:
         luce_campata = luce
         m_ed = (q_ed * (luce_campata ** 2)) / 8.0
         v_ed = (q_ed * luce_campata) / 2.0
 
-    # Dimensionamento Legno Lamellare (GL24h -> f_mk = 24 MPa)
-    b_legno = 0.20 # m
+    b_legno = 0.20 
     w_req_cm3 = (m_ed * 1e6) / (14.5 * 1e3)
     h_legno_cm = max(45, int((6 * w_req_cm3 / (b_legno * 100)) ** 0.5 * 10))
     h_legno_cm = ((h_legno_cm + 4) // 4) * 4
     
-    # Dimensionamento Acciaio (S355)
     w_el_req_cm3 = (m_ed * 1e6) / (335.0)
     if w_el_req_cm3 > 3000:
         profilo_acciaio = "HEB 400 / HEB 450"
@@ -160,7 +149,6 @@ def genera_modello_3d(dati):
     else:
         x_pilastri = [0.0, luce_totale / 3.0, (2 * luce_totale) / 3.0, luce_totale]
         
-    # 1. TELAI (PILASTRI E TRAVI)
     for idx_y, y in enumerate(y_portali):
         for idx_x, x in enumerate(x_pilastri):
             if x == 0.0 or x == luce_totale:
@@ -208,7 +196,6 @@ def genera_modello_3d(dati):
                     showlegend=show_leg_trave
                 ))
 
-    # 2. ARCARECCI LONGITUDINALI
     half_luce = luce_totale / 2.0
     x_arc_left = []
     curr = 0.0
@@ -237,8 +224,13 @@ def genera_modello_3d(dati):
                 showlegend=False
             ))
 
-    # 3. CONTROVENTI DINAMICI MULTIPLI
-    campate_controventi = dati.get('campate_controventi_indici', [0, num_campate - 1])
+    # Controllo sicuro e conversione della lista indici controventi
+    raw_indici = dati.get('campate_controventi_indici', [0, num_campate - 1])
+    if isinstance(raw_indici, list):
+        campate_controventi = [int(i) for i in raw_indici if isinstance(i, (int, float))]
+    else:
+        campate_controventi = [0, num_campate - 1]
+
     num_sub_falda = max(1, int(round(half_luce / 5.0)))
     num_sub_parete = max(1, int(round(altezza_gronda / 4.5)))
     
@@ -348,7 +340,10 @@ if file_caricato is not None:
                 if testo_pagina:
                     testi_pdf.append(testo_pagina)
             testo_estratto_file = "\n".join(testi_pdf)
-            st.success(f"File PDF '{file_caricato.name}' letto con successo!")
+            if not testo_estratto_file.strip():
+                st.info("ℹ️ Il file PDF caricato non contiene testo selezionabile (potrebbe essere un disegno/scansione). I parametri geometrici possono essere inseriti o verificati direttamente nei campi sottostanti.")
+            else:
+                st.success(f"File PDF '{file_caricato.name}' letto con successo!")
             
     except Exception as e:
         st.error(f"Errore nella lettura del file: {e}")
@@ -423,17 +418,14 @@ if st.button("Esegui Calcolo Strutturale e Genera Modello 3D", type="primary"):
         
         testo_totale_analisi = testo_commerciale + "\n\n" + dati_config_str + "\n\n--- NOTE DAL FILE ALLEGATO ---\n" + testo_estratto_file
         
-        if not testo_totale_analisi.strip():
-            st.warning("Inserisci del testo nel riquadro o carica un file prima di eseguire il calcolo.")
-        else:
-            genai.configure(api_key=api_key)
-            try:
-                model = genai.GenerativeModel(
-                    model_name='gemini-3.6-flash',
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                
-                prompt = f"""
+        genai.configure(api_key=api_key)
+        try:
+            model = genai.GenerativeModel(
+                model_name='gemini-3.6-flash',
+                generation_config={"response_mime_type": "application/json"}
+            )
+            
+            prompt = f"""
 Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018.
 Analizza il testo tecnico fornito e restituisci i parametri climatici, sismici e descrittivi di progetto.
 
@@ -468,41 +460,42 @@ Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markd
 
 Testo da analizzare:
 "{testo_totale_analisi}"
-                """
+            """
+            
+            with st.spinner('Esecuzione calcolo strutturale analitico e generazione modello 3D...'):
+                risposta_ia = model.generate_content(prompt)
+                testo_risposta = risposta_ia.text.strip()
+                if testo_risposta.startswith("```json"):
+                    testo_risposta = testo_risposta[7:]
+                if testo_risposta.startswith("```"):
+                    testo_risposta = testo_risposta[3:]
+                if testo_risposta.endswith("```"):
+                    testo_risposta = testo_risposta[:-3]
                 
-                with st.spinner('Esecuzione calcolo strutturale analitico e generazione modello 3D...'):
-                    risposta_ia = model.generate_content(prompt)
-                    testo_risposta = risposta_ia.text.strip()
-                    if testo_risposta.startswith("```json"):
-                        testo_risposta = testo_risposta[7:]
-                    if testo_risposta.startswith("```"):
-                        testo_risposta = testo_risposta[3:]
-                    if testo_risposta.endswith("```"):
-                        testo_risposta = testo_risposta[:-3]
-                    
-                    dati = json.loads(testo_risposta.strip())
-                    
-                    dati['lunghezza_edificio'] = lunghezza_edificio_ui
-                    dati['interasse_portali'] = interasse_portali_ui
-                    dati['luce_totale'] = luce_totale_ui
-                    dati['altezza_gronda'] = altezza_gronda_ui
-                    dati['altezza_colmo'] = altezza_colmo_ui
-                    dati['num_campate'] = num_campate_calc
-                    dati['tipo_travatura'] = tipo_travatura
-                    dati['num_appoggi'] = num_appoggi
-                    dati['tipo_isolante'] = tipo_isolante
-                    dati['spessore_pannello'] = f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice"
-                    dati['impianto_fv_desc'] = impianto_fv_desc
-                    dati['carico_aggiuntivo'] = carico_aggiuntivo
-                    
-                    risultati_strutturali = esegui_calcolo_strutturale_rigoroso(dati)
-                    dati.update(risultati_strutturali)
-                    
-                    st.session_state['dati_ultimi'] = dati
-                    st.success("Calcolo strutturale e dimensionamento verificato completati con successo!")
-                    
-            except Exception as e:
-                st.error(f"Errore durante l'elaborazione: {e}")
+                dati = json.loads(testo_risposta.strip())
+                
+                dati['lunghezza_edificio'] = lunghezza_edificio_ui
+                dati['interasse_portali'] = interasse_portali_ui
+                dati['luce_totale'] = luce_totale_ui
+                dati['altezza_gronda'] = altezza_gronda_ui
+                dati['altezza_colmo'] = altezza_colmo_ui
+                dati['num_campate'] = num_campate_calc
+                dati['tipo_travatura'] = tipo_travatura
+                dati['num_appoggi'] = num_appoggi
+                dati['tipo_isolante'] = tipo_isolante
+                dati['spessore_pannello'] = f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice"
+                dati['impianto_fv_desc'] = impianto_fv_desc
+                dati['carico_aggiuntivo'] = carico_aggiuntivo
+                
+                risultati_strutturali = esegui_calcolo_strutturale_rigoroso(dati)
+                dati.update(risultati_strutturali)
+                
+                st.session_state['dati_ultimi'] = dati
+                st.success("Calcolo strutturale e dimensionamento verificato completati con successo!")
+                
+        except Exception as e:
+            st.error("⚠️ Si è verificato un errore durante l'elaborazione:")
+            st.exception(e) # Mostra l'errore dettagliato a schermo per debugging immediato
 
 if 'dati_ultimi' in st.session_state:
     dati = st.session_state['dati_ultimi']
