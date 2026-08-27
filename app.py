@@ -18,9 +18,9 @@ def genera_word_report(dati):
     doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')} | Classe d'Uso: {dati.get('classe_uso', 'N.D.')} | Fattore q: {dati.get('fattore_struttura_q', 'N.D.')}")
-    doc.add_paragraph(f"Dimensioni Edificio: Lunghezza {dati.get('lunghezza_edificio', 36.0)} m | Larghezza (Luce) {dati.get('luce_totale', 20.0)} m")
+    doc.add_paragraph(f"Dimensioni Edificio: Lunghezza {dati.get('lunghezza_edificio', 40.0)} m | Larghezza (Luce) {dati.get('luce_totale', 20.0)} m")
     doc.add_paragraph(f"Altezze: Gronda {dati.get('altezza_gronda', 6.0)} m | Colmo {dati.get('altezza_colmo', 7.5)} m")
-    doc.add_paragraph(f"Interasse Portali: {dati.get('interasse_portali', 6.0)} m -> N. Campate: {dati.get('num_campate', 6)} (N. Telai: {dati.get('num_campate', 6) + 1})")
+    doc.add_paragraph(f"Interasse Portali: {dati.get('interasse_portali', 5.0)} m -> N. Campate: {dati.get('num_campate', 8)} (N. Telai: {dati.get('num_campate', 8) + 1})")
     doc.add_paragraph(f"Configurazione Telaio: {dati.get('num_appoggi', 2)} Appoggi | Tipologia Travatura: {dati.get('tipo_travatura', 'N.D.')}")
     doc.add_paragraph(f"Interasse Arcarecci (Passo): {dati.get('interasse_arcarecci', 1.5)} m")
     doc.add_paragraph(f"Copertura / Pannello: {dati.get('tipo_isolante', 'N.D.')} - Spessore: {dati.get('spessore_pannello', 'N.D.')}")
@@ -76,12 +76,12 @@ def genera_modello_3d(dati):
     luce_totale = dati.get('luce_totale', 20.0)
     altezza_gronda = dati.get('altezza_gronda', 6.0)
     altezza_colmo = dati.get('altezza_colmo', 7.5)
-    lunghezza_edificio = dati.get('lunghezza_edificio', 36.0)
-    interasse_portali = dati.get('interasse_portali', 6.0)
+    lunghezza_edificio = dati.get('lunghezza_edificio', 40.0)
+    interasse_portali = dati.get('interasse_portali', 5.0)
     num_appoggi = dati.get('num_appoggi', 2)
     tipo_travatura = dati.get('tipo_travatura', 'Bi-falda semplice')
     
-    # Calcolo dinamico di campate e portali
+    # Calcolo rigoroso basato sui parametri impostati dall'utente
     num_campate = max(1, int(round(lunghezza_edificio / interasse_portali)))
     y_portali = [i * interasse_portali for i in range(num_campate + 1)]
     
@@ -95,11 +95,9 @@ def genera_modello_3d(dati):
     # 1. TELAI (PILASTRI E TRAVI)
     for idx_y, y in enumerate(y_portali):
         for x in x_pilastri:
-            # Altezza pilastro in corrispondenza della sua coordinata X
             if x == 0.0 or x == luce_totale:
                 h_p = altezza_gronda
             else:
-                # Pilastro interno
                 h_p = altezza_gronda + (altezza_colmo - altezza_gronda) * (x / (luce_totale/2) if x <= luce_totale/2 else (luce_totale - x)/(luce_totale/2))
             
             fig.add_trace(go.Scatter3d(
@@ -109,10 +107,8 @@ def genera_modello_3d(dati):
                 name='Pilastri' if idx_y == 0 and x == x_pilastri[0] else ''
             ))
         
-        # Disegno travi di falda
         if num_appoggi == 2:
             if "curvo" in tipo_travatura.lower():
-                # Approssimazione intradosso curvo con punti intermedi
                 import numpy as np
                 x_left = np.linspace(0, luce_totale/2, 10)
                 z_left = altezza_gronda + (altezza_colmo - altezza_gronda)*(x_left/(luce_totale/2)) - 0.2*np.sin(np.pi*x_left/(luce_totale/2))
@@ -126,14 +122,12 @@ def genera_modello_3d(dati):
                     name='Trave Curva' if idx_y == 0 else ''
                 ))
             else:
-                # Bi-falda semplice o con giunto in colmo
                 fig.add_trace(go.Scatter3d(
                     x=[0, luce_totale/2, luce_totale], y=[y, y, y], z=[altezza_gronda, altezza_colmo, altezza_gronda],
                     mode='lines',
                     line=dict(color='firebrick', width=6),
                     name='Travi di Falda' if idx_y == 0 else ''
                 ))
-                # Se c'è giunto in colmo, evidenziamo il nodo centrale
                 if "giuntata" in tipo_travatura.lower():
                     fig.add_trace(go.Scatter3d(
                         x=[luce_totale/2], y=[y], z=[altezza_colmo],
@@ -174,14 +168,14 @@ def genera_modello_3d(dati):
             name=''
         ))
 
-    # 3. CONTROVENTI DINAMICI (In base alle indicazioni calcolate / campate di estremità o intermedie)
-    campate_controventi = dati.get('campate_controventi_indici', [0, num_campate - 1])
+    # 3. CONTROVENTI DINAMICI (Campata iniziale e finale di estremità)
+    campate_controventi = [0, num_campate - 1]
     for idx in campate_controventi:
         if 0 <= idx < num_campate:
             y_start = y_portali[idx]
             y_end = y_portali[idx + 1]
             
-            # Controventi di Copertura (Falde inclinate)
+            # Controventi di Copertura (Inclinati sulla falda)
             fig.add_trace(go.Scatter3d(
                 x=[0.0, luce_totale/2.0, None, 0.0, luce_totale/2.0],
                 y=[y_start, y_end, None, y_end, y_start],
@@ -203,7 +197,7 @@ def genera_modello_3d(dati):
             for x_wall in [0.0, luce_totale]:
                 fig.add_trace(go.Scatter3d(
                     x=[x_wall, x_wall, None, x_wall, x_wall],
-                    y=[y_start, y_end, None, y_start, y_end],
+                    y=[y_start, y_end, None, y_end, y_start],
                     z=[0.0, altezza_gronda, None, altezza_gronda, 0.0],
                     mode='lines',
                     line=dict(color='darkorange', width=4),
@@ -211,7 +205,7 @@ def genera_modello_3d(dati):
                 ))
 
     fig.update_layout(
-        title=f"Modello 3D Struttura Dinamico ({num_campate} Campate, {num_campate+1} Telai - {tipo_travatura})",
+        title=f"Modello 3D Dinamico ({num_campate} Campate, {num_campate+1} Telai - {tipo_travatura})",
         scene=dict(
             xaxis_title=f'Larghezza (X - {luce_totale}m)',
             yaxis_title=f'Lunghezza (Y - {lunghezza_edificio}m)',
@@ -261,10 +255,23 @@ testo_commerciale = st.text_area(
     "Incolla qui le note del progetto o il capitolato:", 
     height=100,
     value="",
-    placeholder="Inserisci dimensioni (es. lunghezza 36m, interasse 6m, larghezza 20m, altezza 6m) o note di progetto..."
+    placeholder="Incolla qui note di progetto o capitolato..."
 )
 
-st.markdown("### 🏛️ Configurazione Geometrica del Telaio e della Travatura")
+st.markdown("### 📐 Dimensioni Geometriche dell'Edificio (Modificabili)")
+col_dim1, col_dim2, col_dim3, col_dim4, col_dim5 = st.columns(5)
+with col_dim1:
+    lunghezza_edificio_ui = st.number_input("Lunghezza Edificio (m)", min_value=5.0, value=40.0, step=1.0, format="%.1f")
+with col_dim2:
+    interasse_portali_ui = st.number_input("Interasse Portali (m)", min_value=2.0, value=5.0, step=0.5, format="%.2f")
+with col_dim3:
+    luce_totale_ui = st.number_input("Luce Totale / Larghezza (m)", min_value=5.0, value=20.0, step=1.0, format="%.1f")
+with col_dim4:
+    altezza_gronda_ui = st.number_input("Altezza Gronda (m)", min_value=3.0, value=6.0, step=0.5, format="%.1f")
+with col_dim5:
+    altezza_colmo_ui = st.number_input("Altezza Colmo (m)", min_value=3.5, value=7.5, step=0.5, format="%.1f")
+
+st.markdown("### 🏛️ Configurazione Telaio e Travatura")
 col_g1, col_g2 = st.columns(2)
 with col_g1:
     tipo_travatura = st.selectbox("Tipologia Travatura di Copertura", ["Bi-falda semplice", "Bi-falda con intradosso curvo", "Trave di falda giuntata in colmo"])
@@ -298,6 +305,11 @@ if st.button("Esegui Dimensionamento Dinamico e Modello 3D", type="primary"):
         impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
         dati_config_str = f"""
         --- CONFIGURAZIONE GEOMETRICA E CARICHI SCELTI ---
+        - Lunghezza Edificio: {lunghezza_edificio_ui} m
+        - Interasse Portali: {interasse_portali_ui} m
+        - Luce Totale: {luce_totale_ui} m
+        - Altezza Gronda: {altezza_gronda_ui} m
+        - Altezza Colmo: {altezza_colmo_ui} m
         - Tipologia Travatura: {tipo_travatura}
         - Numero Appoggi Telaio: {num_appoggi} appoggi
         - Tipologia Pannello: {tipo_isolante}
@@ -320,18 +332,7 @@ if st.button("Esegui Dimensionamento Dinamico e Modello 3D", type="primary"):
                 
                 prompt = f"""
 Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018 (Neve, Vento, Sisma, carichi di copertura, schemi statici a 2/3/4 appoggi, travi a intradosso curvo o giuntate in colmo) e nodi esecutivi.
-Analizza il testo tecnico e le note CAD fornite. Estrai o calcola rigorosamente:
-1. "luce_totale": float (larghezza complessiva dell'edificio in metri, es. 20.0)
-2. "altezza_gronda": float (altezza in gronda in metri, es. 6.0)
-3. "altezza_colmo": float (altezza in colmo in metri, es. 7.5)
-4. "lunghezza_edificio": float (lunghezza totale in metri, es. 36.0)
-5. "interasse_portali": float (interasse longitudinale tra i telai in metri, es. 6.0)
-6. "num_campate": int (calcolato come round(lunghezza_edificio / interasse_portali))
-7. "campate_controventi_indici": lista di interi (indici 0-based delle campate in cui posizionare i controventi di falda e parete in funzione del calcolo strutturale, es. [0, num_campate-1] per le campate di estremità).
-
-REGOLA FONDAMENTALE per i controventi:
-- Le chiavi "controventi_copertura_legno" e "controventi_parete_legno" DEVONO contenere esclusivamente soluzioni con elementi in LEGNO (es. diagonali in legno lamellare).
-- Le chiavi "controventi_copertura_acciaio" e "controventi_parete_acciaio" DEVONO contenere esclusivamente soluzioni con PROFILI IN ACCIAIO.
+Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e rigoroso.
 
 Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown di alcun tipo, inizia con '{' e finisci con '}') con queste esatte chiavi:
 - "luogo": stringa
@@ -343,18 +344,7 @@ Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markd
 - "fattore_struttura_q": stringa
 - "tipo_travatura": stringa
 - "num_appoggi": int
-- "luce_totale": float
-- "altezza_gronda": float
-- "altezza_colmo": float
-- "lunghezza_edificio": float
-- "interasse_portali": float
-- "num_campate": int
-- "campate_controventi_indici": lista di interi
 - "interasse_arcarecci": float
-- "tipo_isolante": stringa
-- "spessore_pannello": stringa
-- "impianto_fv_desc": stringa
-- "carico_aggiuntivo": float
 - "sezione_arcarecci": stringa
 - "verifica_arcarecci": stringa
 - "travi_legno": stringa
@@ -385,7 +375,7 @@ Testo da analizzare:
 "{testo_totale_analisi}"
                 """
                 
-                with st.spinner('Elaborazione calcoli strutturali dinamici e generazione modello 3D...'):
+                with st.spinner('Elaborazione calcoli strutturali e generazione modello 3D...'):
                     risposta_ia = model.generate_content(prompt)
                     testo_risposta = risposta_ia.text.strip()
                     if testo_risposta.startswith("```json"):
@@ -396,6 +386,14 @@ Testo da analizzare:
                         testo_risposta = testo_risposta[:-3]
                     
                     dati = json.loads(testo_risposta.strip())
+                    # Assegnazione forzata e prioritaria dei parametri geometrici inseriti dall'utente/UI
+                    dati['lunghezza_edificio'] = lunghezza_edificio_ui
+                    dati['interasse_portali'] = interasse_portali_ui
+                    dati['luce_totale'] = luce_totale_ui
+                    dati['altezza_gronda'] = altezza_gronda_ui
+                    dati['altezza_colmo'] = altezza_colmo_ui
+                    dati['num_campate'] = max(1, int(round(lunghezza_edificio_ui / interasse_portali_ui)))
+                    
                     dati['tipo_travatura'] = tipo_travatura
                     dati['num_appoggi'] = num_appoggi
                     dati['tipo_isolante'] = tipo_isolante
@@ -404,7 +402,7 @@ Testo da analizzare:
                     dati['carico_aggiuntivo'] = carico_aggiuntivo
                     
                     st.session_state['dati_ultimi'] = dati
-                    st.success("Dimensionamento e modello dinamico generati con successo!")
+                    st.success("Dimensionamento e modello geometrico generati con successo!")
                     
             except Exception as e:
                 st.error(f"Errore durante l'elaborazione: {e}")
@@ -437,13 +435,13 @@ if 'dati_ultimi' in st.session_state:
     st.markdown("### 📍 1. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Località", dati.get("luogo", "Bolzano"))
-    c2.metric("Lunghezza Edificio", f"{dati.get('lunghezza_edificio', 36.0)} m")
-    c3.metric("N. Campate / Telai", f"{dati.get('num_campate', 6)} Camp. / {dati.get('num_campate', 6)+1} Telai")
-    c4.metric("Interasse Portali", f"{dati.get('interasse_portali', 6.0)} m")
+    c2.metric("Lunghezza Edificio", f"{dati.get('lunghezza_edificio')} m")
+    c3.metric("N. Campate / Telai", f"{dati.get('num_campate')} Camp. / {dati.get('num_campate')+1} Telai")
+    c4.metric("Interasse Portali", f"{dati.get('interasse_portali')} m")
     
     c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Luce Totale", f"{dati.get('luce_totale', 20.0)} m")
-    c6.metric("Schema Telaio", f"{dati.get('num_appoggi', 2)} Appoggi")
+    c5.metric("Luce Totale", f"{dati.get('luce_totale')} m")
+    c6.metric("Schema Telaio", f"{dati.get('num_appoggi')} Appoggi")
     c7.metric("Travatura", dati.get("tipo_travatura", "Bi-falda semplice"))
     c8.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
     
