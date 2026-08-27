@@ -94,20 +94,23 @@ def genera_modello_3d(dati):
         
     # 1. TELAI (PILASTRI E TRAVI)
     for idx_y, y in enumerate(y_portali):
-        for x in x_pilastri:
+        for idx_x, x in enumerate(x_pilastri):
             if x == 0.0 or x == luce_totale:
                 h_p = altezza_gronda
             else:
                 h_p = altezza_gronda + (altezza_colmo - altezza_gronda) * (x / (luce_totale/2) if x <= luce_totale/2 else (luce_totale - x)/(luce_totale/2))
             
+            show_leg = (idx_y == 0 and idx_x == 0)
             fig.add_trace(go.Scatter3d(
                 x=[x, x], y=[y, y], z=[0, h_p],
                 mode='lines',
                 line=dict(color='darkblue', width=6),
-                name='Pilastri' if idx_y == 0 and x == x_pilastri[0] else ''
+                name='Pilastri' if show_leg else '',
+                showlegend=show_leg
             ))
         
         if num_appoggi == 2:
+            show_leg_trave = (idx_y == 0)
             if "curvo" in tipo_travatura.lower():
                 import numpy as np
                 x_left = np.linspace(0, luce_totale/2, 10)
@@ -119,21 +122,24 @@ def genera_modello_3d(dati):
                     x=list(x_left) + list(x_right), y=[y]*20, z=list(z_left) + list(z_right),
                     mode='lines',
                     line=dict(color='firebrick', width=6),
-                    name='Trave Curva' if idx_y == 0 else ''
+                    name='Travi di Falda' if show_leg_trave else '',
+                    showlegend=show_leg_trave
                 ))
             else:
                 fig.add_trace(go.Scatter3d(
                     x=[0, luce_totale/2, luce_totale], y=[y, y, y], z=[altezza_gronda, altezza_colmo, altezza_gronda],
                     mode='lines',
                     line=dict(color='firebrick', width=6),
-                    name='Travi di Falda' if idx_y == 0 else ''
+                    name='Travi di Falda' if show_leg_trave else '',
+                    showlegend=show_leg_trave
                 ))
                 if "giuntata" in tipo_travatura.lower():
                     fig.add_trace(go.Scatter3d(
                         x=[luce_totale/2], y=[y], z=[altezza_colmo],
                         mode='markers',
                         marker=dict(size=6, color='gold'),
-                        name='Giunto in Colmo' if idx_y == 0 else ''
+                        name='Giunto in Colmo' if show_leg_trave else '',
+                        showlegend=show_leg_trave
                     ))
         else:
             for i in range(len(x_pilastri) - 1):
@@ -141,22 +147,26 @@ def genera_modello_3d(dati):
                 x_end = x_pilastri[i+1]
                 x_mid = (x_start + x_end) / 2
                 z_mid = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_mid / (luce_totale/2) if x_mid <= luce_totale/2 else (luce_totale - x_mid)/(luce_totale/2))
+                show_leg_trave = (idx_y == 0 and i == 0)
                 fig.add_trace(go.Scatter3d(
                     x=[x_start, x_mid, x_end], y=[y, y, y], z=[altezza_gronda, z_mid, altezza_gronda],
                     mode='lines',
                     line=dict(color='firebrick', width=6),
-                    name='Travi di Falda' if idx_y == 0 and i == 0 else ''
+                    name='Travi di Falda' if show_leg_trave else '',
+                    showlegend=show_leg_trave
                 ))
 
     # 2. ARCARECCI LONGITUDINALI
     x_steps = [i * (luce_totale / 2) / 4 for i in range(5)]
-    for x_val in x_steps:
+    for idx_x, x_val in enumerate(x_steps):
         z_val = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_val / (luce_totale/2))
+        show_leg_arc = (idx_x == 0)
         fig.add_trace(go.Scatter3d(
             x=[x_val, x_val], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val],
             mode='lines',
             line=dict(color='gray', width=2, dash='dot'),
-            name='Arcarecci' if x_val == x_steps[0] else ''
+            name='Arcarecci' if show_leg_arc else '',
+            showlegend=show_leg_arc
         ))
     for x_val in x_steps[1:]:
         x_right = luce_totale - x_val
@@ -165,7 +175,7 @@ def genera_modello_3d(dati):
             x=[x_right, x_right], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val],
             mode='lines',
             line=dict(color='gray', width=2, dash='dot'),
-            name=''
+            showlegend=False
         ))
 
     # 3. CONTROVENTI DINAMICI (Campata iniziale e finale di estremità)
@@ -174,6 +184,7 @@ def genera_modello_3d(dati):
         if 0 <= idx < num_campate:
             y_start = y_portali[idx]
             y_end = y_portali[idx + 1]
+            show_leg_cv_cop = (idx == campate_controventi[0])
             
             # Controventi di Copertura (Inclinati sulla falda)
             fig.add_trace(go.Scatter3d(
@@ -182,7 +193,8 @@ def genera_modello_3d(dati):
                 z=[altezza_gronda, altezza_colmo, None, altezza_gronda, altezza_colmo],
                 mode='lines',
                 line=dict(color='forestgreen', width=4),
-                name='Controventi di Copertura' if idx == campate_controventi[0] else ''
+                name='Controventi Copertura' if show_leg_cv_cop else '',
+                showlegend=show_leg_cv_cop
             ))
             fig.add_trace(go.Scatter3d(
                 x=[luce_totale/2.0, luce_totale, None, luce_totale/2.0, luce_totale],
@@ -190,18 +202,20 @@ def genera_modello_3d(dati):
                 z=[altezza_colmo, altezza_gronda, None, altezza_colmo, altezza_gronda],
                 mode='lines',
                 line=dict(color='forestgreen', width=4),
-                name=''
+                showlegend=False
             ))
             
-            # Controventi di Parete (Baraccatura perimetrale)
+            # Controventi di Parete (Baraccatura perimetrale a X)
             for x_wall in [0.0, luce_totale]:
+                show_leg_cv_par = (x_wall == 0.0 and idx == campate_controventi[0])
                 fig.add_trace(go.Scatter3d(
                     x=[x_wall, x_wall, None, x_wall, x_wall],
-                    y=[y_start, y_end, None, y_end, y_start],
-                    z=[0.0, altezza_gronda, None, altezza_gronda, 0.0],
+                    y=[y_start, y_end, None, y_start, y_end], 
+                    z=[0.0, altezza_gronda, None, altezza_gronda, 0.0], 
                     mode='lines',
                     line=dict(color='darkorange', width=4),
-                    name='Controventi di Parete' if x_wall == 0.0 and idx == campate_controventi[0] else ''
+                    name='Controventi Parete' if show_leg_cv_par else '',
+                    showlegend=show_leg_cv_par
                 ))
 
     fig.update_layout(
