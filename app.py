@@ -6,6 +6,7 @@ import io
 import ezdxf
 import tempfile
 import os
+import plotly.graph_objects as go
 
 # --- FUNZIONE PER GENERARE IL DOCUMENTO WORD STANDARD ---
 def genera_word_report(dati):
@@ -64,6 +65,97 @@ def genera_word_report(dati):
     doc.save(file_stream)
     file_stream.seek(0)
     return file_stream
+
+# --- FUNZIONE PER GENERARE IL MODELLO 3D INTERATTIVO ---
+def genera_modello_3d(dati):
+    fig = go.Figure()
+    
+    interasse_portali = dati.get('interasse_portali', 6.0)
+    num_appoggi = dati.get('num_appoggi', 2)
+    
+    luce_totale = 20.0
+    altezza_gronda = 6.0
+    altezza_colmo = 7.5
+    num_campate = 4
+    y_portali = [i * interasse_portali for i in range(num_campate + 1)]
+    
+    if num_appoggi == 2:
+        x_pilastri = [0.0, luce_totale]
+    elif num_appoggi == 3:
+        x_pilastri = [0.0, luce_totale / 2.0, luce_totale]
+    else:
+        x_pilastri = [0.0, luce_totale / 3.0, (2 * luce_totale) / 3.0, luce_totale]
+        
+    # 1. TELAI (PILASTRI E TRAVI)
+    for y in y_portali:
+        for x in x_pilastri:
+            fig.add_trace(go.Scatter3d(
+                x=[x, x], y=[y, y], z=[0, altezza_gronda],
+                mode='lines',
+                line=dict(color='darkblue', width=6),
+                name='Pilastri' if y == y_portali[0] and x == x_pilastri[0] else ''
+            ))
+        
+        if num_appoggi == 2:
+            fig.add_trace(go.Scatter3d(
+                x=[0, luce_totale/2, luce_totale], y=[y, y, y], z=[altezza_gronda, altezza_colmo, altezza_gronda],
+                mode='lines',
+                line=dict(color='firebrick', width=6),
+                name='Travi di Falda' if y == y_portali[0] else ''
+            ))
+        else:
+            for i in range(len(x_pilastri) - 1):
+                x_start = x_pilastri[i]
+                x_end = x_pilastri[i+1]
+                x_mid = (x_start + x_end) / 2
+                fig.add_trace(go.Scatter3d(
+                    x=[x_start, x_mid, x_end], y=[y, y, y], z=[altezza_gronda, altezza_colmo, altezza_gronda],
+                    mode='lines',
+                    line=dict(color='firebrick', width=6),
+                    name='Travi di Falda' if y == y_portali[0] and i == 0 else ''
+                ))
+
+    # 2. ARCARECCI LONGITUDINALI
+    x_steps = [i * (luce_totale / 2) / 4 for i in range(5)]
+    for x_val in x_steps:
+        z_val = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_val / (luce_totale/2))
+        fig.add_trace(go.Scatter3d(
+            x=[x_val, x_val], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val],
+            mode='lines',
+            line=dict(color='gray', width=2, dash='dot'),
+            name='Arcarecci' if x_val == x_steps[0] else ''
+        ))
+    for x_val in x_steps[1:]:
+        x_right = luce_totale - x_val
+        z_val = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_val / (luce_totale/2))
+        fig.add_trace(go.Scatter3d(
+            x=[x_right, x_right], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val],
+            mode='lines',
+            line=dict(color='gray', width=2, dash='dot'),
+            name=''
+        ))
+
+    # 3. CONTROVENTI DI FALDA
+    for y_c in [y_portali[0], y_portali[-2]]:
+        fig.add_trace(go.Scatter3d(
+            x=[0, luce_totale/2, luce_totale/2, 0], y=[y_c, y_c+interasse_portali, y_c, y_c+interasse_portali], z=[altezza_gronda, altezza_colmo, altezza_gronda, altezza_colmo],
+            mode='lines',
+            line=dict(color='green', width=3),
+            name='Controventi' if y_c == y_portali[0] else ''
+        ))
+
+    fig.update_layout(
+        title=f"Modello 3D Struttura ({dati.get('num_appoggi', 2)} Appoggi - {dati.get('tipo_travatura', 'Bi-falda')})",
+        scene=dict(
+            xaxis_title='Larghezza (X - m)',
+            yaxis_title='Lunghezza / Campate (Y - m)',
+            zaxis_title='Altezza (Z - m)',
+            aspectmode='data'
+        ),
+        margin=dict(l=0, r=0, b=0, t=40),
+        height=550
+    )
+    return fig
 
 st.set_page_config(page_title="Predimensionamento Strutturale IA", layout="wide")
 st.title("Generatore Offerte Tecniche e Dimensionamento IA 🏗️")
@@ -164,7 +256,7 @@ if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma e Configurazio
 Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018 (Neve, Vento, Sisma, carichi di copertura, schemi statici a 2/3/4 appoggi, travi a intradosso curvo o giuntate in colmo) e nodi esecutivi.
 Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e rigoroso, tenendo conto esplicitamente di:
 1. La geometria della travatura scelta ({tipo_travatura}). Se è "Trave di falda giuntata in colmo", dimensiona anche la piastra di giunzione bullonata in colmo.
-2. Lo schema statico del telaio con {num_appoggi} appoggi (considerando eventuali pilastri intermedi per 3 o 4 appoggi).
+2. Lo schema statico del telaio con {num_appoggi} appoggi.
 
 REGOLA FONDAMENTALE per i controventi:
 - Le chiavi "controventi_copertura_legno" e "controventi_parete_legno" DEVONO contenere esclusivamente soluzioni con elementi in LEGNO (es. diagonali in legno lamellare).
@@ -255,6 +347,13 @@ if 'dati_ultimi' in st.session_state:
             type="primary",
             use_container_width=True
         )
+    
+    st.markdown("---")
+    
+    # VISUALIZZAZIONE MODELLO 3D INTERATTIVO
+    st.markdown("### 🌐 Modello 3D Interattivo della Struttura (Telai, Arcarecci e Controventi)")
+    fig_3d = genera_modello_3d(dati)
+    st.plotly_chart(fig_3d, use_container_width=True)
     
     st.markdown("---")
     
