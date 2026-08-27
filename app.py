@@ -12,12 +12,14 @@ def genera_word_report(dati):
     doc = Document()
     doc.add_heading('Relazione Tecnica di Predimensionamento (NTC 2018)', 0)
     
-    doc.add_heading('1. Parametri Geometrici, Climatici e Sismici', level=1)
+    doc.add_heading('1. Parametri Geometrici, Climatici, Sismici e di Carico', level=1)
     doc.add_paragraph(f"Località: {dati.get('luogo', 'Bolzano')}")
     doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')} | Classe d'Uso: {dati.get('classe_uso', 'N.D.')} | Fattore q: {dati.get('fattore_struttura_q', 'N.D.')}")
     doc.add_paragraph(f"Interasse Portali: {dati.get('interasse_portali', 6.0)} m | Interasse Arcarecci (Passo): {dati.get('interasse_arcarecci', 1.5)} m")
+    doc.add_paragraph(f"Copertura / Pannello: {dati.get('tipo_isolante', 'N.D.')} - Spessore: {dati.get('spessore_pannello', 'N.D.')}")
+    doc.add_paragraph(f"Impianto Fotovoltaico: {dati.get('impianto_fv_desc', 'Escluso')} | Carico Extra Manuale: {dati.get('carico_aggiuntivo', 0.0)} kN/m²")
     
     doc.add_heading('2. Arcarecci di Copertura', level=1)
     doc.add_paragraph(f"Passo / Interasse Arcarecci: {dati.get('interasse_arcarecci', 1.5)} m")
@@ -97,16 +99,47 @@ if file_cad_caricato is not None:
 
 testo_commerciale = st.text_area(
     "Incolla qui le note del progetto o il capitolato:", 
-    height=150,
+    height=120,
     value="",
     placeholder="Incolla qui le note del progetto, i dati dimensionali, il luogo di costruzione o le richieste specifiche del capitolato..."
 )
 
-if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma)", type="primary"):
+st.markdown("### ⚙️ Parametri Carichi di Copertura e Pannellature")
+col_c1, col_c2, col_c3 = st.columns(3)
+
+with col_c1:
+    tipo_isolante = st.selectbox("Tipologia Pannello Copertura", ["PIR / PUR", "Lana Minerale", "Lamiera Grecata Semplice"])
+    if tipo_isolante == "PIR / PUR":
+        spessore_pannello = st.selectbox("Spessore Pannello (mm)", [50, 60, 80, 100, 120])
+    elif tipo_isolante == "Lana Minerale":
+        spessore_pannello = st.selectbox("Spessore Pannello (mm)", [100, 120, 150, 170])
+    else:
+        spessore_pannello = 0
+
+with col_c2:
+    st.write("")
+    st.write("")
+    impianto_fv = st.checkbox("Impianto Fotovoltaico in Copertura (20 kg/mq)", value=False)
+
+with col_c3:
+    carico_aggiuntivo = st.number_input("Carico aggiuntivo manuale (kN/mq)", min_value=0.0, value=0.0, step=0.05, format="%.2f")
+
+if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma e Carichi)", type="primary"):
     if not api_key:
         st.error("Inserisci prima l'API Key nella barra laterale!")
     else:
-        testo_totale_analisi = testo_commerciale + "\n\n--- NOTE DAL CAD ---\n" + testo_da_cad
+        # Stringa riassuntiva dei carichi scelti dall'utente da passare all'IA
+        impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
+        dati_carichi_str = f"""
+        --- PARAMETRI CARICHI COPERTURA SCELTI ---
+        - Tipologia Pannello: {tipo_isolante}
+        - Spessore Pannello: {spessore_pannello} mm
+        - Impianto Fotovoltaico: {impianto_fv_desc}
+        - Carico Permanente Aggiuntivo Manuale: {carico_aggiuntivo} kN/mq
+        """
+        
+        testo_totale_analisi = testo_commerciale + "\n\n" + dati_carichi_str + "\n\n--- NOTE DAL CAD ---\n" + testo_da_cad
+        
         if not testo_totale_analisi.strip():
             st.warning("Inserisci del testo nel riquadro o carica un file CAD prima di eseguire il dimensionamento.")
         else:
@@ -117,9 +150,9 @@ if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma)", type="prima
                     generation_config={"response_mime_type": "application/json"}
                 )
                 
-                prompt = """
-Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018 (Neve, Vento, Sisma) e nodi esecutivi.
-Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e rigoroso.
+                prompt = f"""
+Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018 (Neve, Vento, Sisma, carichi permanenti di copertura e fotovoltaico) e nodi esecutivi.
+Analizza il testo tecnico fornito (che include i carichi specificati di pannellatura, fotovoltaico ed eventuale carico manuale) e calcola un predimensionamento strutturale conservativo e rigoroso.
 Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown di alcun tipo, inizia con '{' e finisci con '}') con queste esatte chiavi:
 - "luogo": stringa
 - "qsk": float
@@ -130,6 +163,10 @@ Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markd
 - "fattore_struttura_q": stringa
 - "interasse_portali": float
 - "interasse_arcarecci": float
+- "tipo_isolante": stringa
+- "spessore_pannello": stringa
+- "impianto_fv_desc": stringa
+- "carico_aggiuntivo": float
 - "sezione_arcarecci": stringa
 - "verifica_arcarecci": stringa
 - "travi_legno": stringa
@@ -156,9 +193,10 @@ Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markd
 - "note_tecniche": stringa
 
 Testo da analizzare:
-""" + testo_totale_analisi
+"{testo_totale_analisi}"
+                """
                 
-                with st.spinner('Elaborazione calcoli strutturali (Neve, Vento, Sisma NTC 2018)...'):
+                with st.spinner('Elaborazione calcoli strutturali tenendo conto dei carichi in copertura (NTC 2018)...'):
                     risposta_ia = model.generate_content(prompt)
                     testo_risposta = risposta_ia.text.strip()
                     if testo_risposta.startswith("```json"):
@@ -169,8 +207,14 @@ Testo da analizzare:
                         testo_risposta = testo_risposta[:-3]
                     
                     dati = json.loads(testo_risposta.strip())
+                    # Assicuriamoci che i valori scelti manualmente siano sempre coerenti nel dizionario sessione
+                    dati['tipo_isolante'] = tipo_isolante
+                    dati['spessore_pannello'] = f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice"
+                    dati['impianto_fv_desc'] = impianto_fv_desc
+                    dati['carico_aggiuntivo'] = carico_aggiuntivo
+                    
                     st.session_state['dati_ultimi'] = dati
-                    st.success("Dimensionamento completato con successo!")
+                    st.success("Dimensionamento con carichi di copertura completato con successo!")
                     
             except Exception as e:
                 st.error(f"Errore durante l'elaborazione: {e}")
@@ -193,7 +237,7 @@ if 'dati_ultimi' in st.session_state:
     
     st.markdown("---")
     
-    st.markdown("### 📍 1. Dati geometrici, climatici e sismici (NTC 2018)")
+    st.markdown("### 📍 1. Dati geometrici, climatici, sismici e di carico (NTC 2018)")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Località", dati.get("luogo", "Bolzano"))
     c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
@@ -204,6 +248,8 @@ if 'dati_ultimi' in st.session_state:
     c5.metric("Pressione Vento", dati.get("pressione_vento", "0.80 kN/m²"))
     c6.metric("Classe d'Uso", dati.get("classe_uso", "Classe II"))
     c7.metric("Fattore di Struttura", dati.get("fattore_struttura_q", "q = 2.0"))
+    
+    st.info(f"🏗️ **Copertura configurata:** Pannello {dati.get('tipo_isolante')} ({dati.get('spessore_pannello')}) | **Impianto FV:** {dati.get('impianto_fv_desc')} | **Carico Extra:** {dati.get('carico_aggiuntivo', 0.0)} kN/mq")
     
     st.markdown("---")
     st.markdown("### 🪵 2. Arcarecci di Copertura")
