@@ -32,13 +32,11 @@ def esegui_calcolo_strutturale_rigoroso(dati_geo):
     
     # Neve e Vento (NTC 2018)
     s = qsk * 1.0 # Valore di calcolo neve
-    w = 0.60      # Pressione vento di riferimento media
     
     # Carico Totale Lineare Ultimo (SLU) q_ed = 1.3*G1 + 1.5*G2 + 1.5*Q_neve
     q_ed = interasse * (1.3 * g1 + 1.5 * g2 + 1.5 * s)
     
-    # Momento flettente massimo approssimato per portale pluricampata (schema trave continua / traversa)
-    # M = (q_ed * L^2) / 8 ridotto dalla presenza del pilastro centrale (se num_appoggi == 3)
+    # Momento flettente massimo approssimato per portale pluricampata
     if num_appoggi >= 3:
         luce_campata = luce / (num_appoggi - 1)
         m_ed = (q_ed * (luce_campata ** 2)) / 10.0 # kNm
@@ -49,14 +47,12 @@ def esegui_calcolo_strutturale_rigoroso(dati_geo):
         v_ed = (q_ed * luce_campata) / 2.0
 
     # Dimensionamento Legno Lamellare (GL24h -> f_mk = 24 MPa)
-    # W_req = M_ed / f_d -> h approssimata per sezione rettangolare bxh (b = 200mm)
     b_legno = 0.20 # m
-    w_req_cm3 = (m_ed * 1e6) / (14.5 * 1e3) # cm3 circa
+    w_req_cm3 = (m_ed * 1e6) / (14.5 * 1e3)
     h_legno_cm = max(45, int((6 * w_req_cm3 / (b_legno * 100)) ** 0.5 * 10))
-    h_legno_cm = ((h_legno_cm + 4) // 4) * 4 # Arrotondamento a multipli di 4cm
+    h_legno_cm = ((h_legno_cm + 4) // 4) * 4
     
-    # Dimensionamento Acciaio (S355 -> f_yd = 355 MPa / 1.05)
-    # W_el_req = M_ed / f_yd
+    # Dimensionamento Acciaio (S355)
     w_el_req_cm3 = (m_ed * 1e6) / (335.0)
     if w_el_req_cm3 > 3000:
         profilo_acciaio = "HEB 400 / HEB 450"
@@ -65,7 +61,6 @@ def esegui_calcolo_strutturale_rigoroso(dati_geo):
     else:
         profilo_acciaio = "IPE 360 / HEA 300"
 
-    # Dimensionamento C.a.p.
     profilo_cap = f"Trave a T rovescia precompressa altezza {max(80, int(h_legno_cm*1.2))} cm"
 
     risultati_calcolo = {
@@ -487,7 +482,6 @@ Testo da analizzare:
                     
                     dati = json.loads(testo_risposta.strip())
                     
-                    # Parametri geometrici di input
                     dati['lunghezza_edificio'] = lunghezza_edificio_ui
                     dati['interasse_portali'] = interasse_portali_ui
                     dati['luce_totale'] = luce_totale_ui
@@ -501,7 +495,6 @@ Testo da analizzare:
                     dati['impianto_fv_desc'] = impianto_fv_desc
                     dati['carico_aggiuntivo'] = carico_aggiuntivo
                     
-                    # ESECUZIONE DEL MOTORE DI CALCOLO STRUTTURALE RIGOROSO
                     risultati_strutturali = esegui_calcolo_strutturale_rigoroso(dati)
                     dati.update(risultati_strutturali)
                     
@@ -529,7 +522,6 @@ if 'dati_ultimi' in st.session_state:
     
     st.markdown("---")
     
-    # VISUALIZZAZIONE MODELLO 3D DINAMICO
     st.markdown("### 🌐 Modello 3D Dinamico e Sollecitazioni Strutturali")
     fig_3d = genera_modello_3d(dati)
     st.plotly_chart(fig_3d, use_container_width=True)
@@ -599,7 +591,7 @@ if 'dati_ultimi' in st.session_state:
         st.markdown("#### 🧱 Controventi di Parete (Baraccatura)")
         st.write(f"📍 **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
         st.warning(f"🌲 **Opzione Legno:** {dati.get('controventi_parete_legno', 'N.D.')}")
-        st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.'))}")
+        st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
     
     st.markdown("---")
     st.markdown("### 🔩 7. Dimensionamento Dettagliato Connessioni e Nodi")
