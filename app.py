@@ -193,8 +193,54 @@ if st.button("Esegui Dimensionamento Completo (Neve, Vento, Sisma)", type="prima
                     generation_config={"response_mime_type": "application/json"}
                 )
                 
-                prompt = f'''
+                prompt = f"""
                 Sei un ingegnere strutturista senior in WolfSystem, esperto in prefabbricazione, NTC 2018 (analisi combinata Neve, Vento e Sisma) e nodi esecutivi.
                 Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo. In particolare, deduci rigorosamente:
                 1. I parametri neve (qsk) e vento (Zona Vento, pressione).
                 2. I parametri sismici secondo NTC 2018 in base alla località (Zona Sismica, accelerazione di picco ag, Classe d'Uso della costruzione e Fattore di struttura q).
+                
+                Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown) con queste chiavi esatte:
+                - "luogo": stringa
+                - "qsk": float
+                - "zona_vento": stringa
+                - "pressione_vento": stringa
+                - "zona_sismica": stringa
+                - "classe_uso": stringa
+                - "fattore_struttura_q": stringa
+                - "interasse_portali": float
+                - "interasse_arcarecci": float
+                - "sezione_arcarecci": stringa
+                - "verifica_arcarecci": stringa
+                - "travi_legno": stringa
+                - "travi_acciaio": stringa
+                - "travi_cap": stringa
+                - "pilastri_legno": stringa
+                - "pilastri_acciaio": stringa
+                - "pilastri_cap": stringa
+                - "controventi_copertura_legno": stringa
+                - "controventi_copertura_acciaio": stringa
+                - "controventi_copertura_pos": stringa
+                - "controventi_parete_legno": stringa
+                - "controventi_parete_acciaio": stringa
+                - "controventi_parete_pos": stringa
+                - "conn_trave_pilastro_tipo": stringa
+                - "conn_trave_pilastro_elementi": stringa
+                - "conn_trave_pilastro_kg": stringa
+                - "conn_pilastro_fondazione_tipo": stringa
+                - "conn_pilastro_fondazione_elementi": stringa
+                - "conn_pilastro_fondazione_kg": stringa
+                - "classe_resistenza_fuoco": stringa
+                - "mq_intumescente": stringa
+                - "dettaglio_verniciatura": stringa
+                - "note_tecniche": stringa
+                
+                Testo:
+                "{testo_totale_analisi}"
+                """
+                
+                with st.spinner('Elaborazione calcoli strutturali (Neve, Vento, Sisma NTC 2018)...'):
+                    risposta_ia = model.generate_content(prompt)
+                    testo_risposta = risposta_ia.text.strip()
+                    if testo_risposta.startswith("```json"):
+                        testo_risposta = testo_risposta[7:]
+                    if testo_risposta.endswith("
