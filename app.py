@@ -17,10 +17,11 @@ def genera_word_report(dati):
     doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')} | Classe d'Uso: {dati.get('classe_uso', 'N.D.')} | Fattore q: {dati.get('fattore_struttura_q', 'N.D.')}")
-    doc.add_paragraph(f"Interasse Portali: {dati.get('interasse_portali', 6.0)} m | Interasse Arcarecci: {dati.get('interasse_arcarecci', 1.5)} m")
+    doc.add_paragraph(f"Interasse Portali: {dati.get('interasse_portali', 6.0)} m | Interasse Arcarecci (Passo): {dati.get('interasse_arcarecci', 1.5)} m")
     
     doc.add_heading('2. Arcarecci di Copertura', level=1)
-    doc.add_paragraph(f"Sezione: {dati.get('sezione_arcarecci', 'N.D.')}")
+    doc.add_paragraph(f"Passo / Interasse Arcarecci: {dati.get('interasse_arcarecci', 1.5)} m")
+    doc.add_paragraph(f"Sezione Consigliata: {dati.get('sezione_arcarecci', 'N.D.')}")
     doc.add_paragraph(f"Verifica: {dati.get('verifica_arcarecci', 'N.D.')}")
     
     doc.add_heading('3. Travi Principali / Portali (Confronto 3 Materiali)', level=1)
@@ -206,7 +207,7 @@ if 'dati_ultimi' in st.session_state:
     
     st.markdown("---")
     st.markdown("### 🪵 2. Arcarecci di Copertura")
-    st.info(f"**Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')} | **Stato:** {dati.get('verifica_arcarecci', 'Verificato')}")
+    st.info(f"**Passo Arcarecci:** {dati.get('interasse_arcarecci', 1.5)} m | **Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')} | **Stato:** {dati.get('verifica_arcarecci', 'Verificato')}")
     
     st.markdown("---")
     st.markdown("### 📐 3. Travi Principali / Portali (Confronto Tecnologico)")
