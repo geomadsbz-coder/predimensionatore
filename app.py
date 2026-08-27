@@ -4,6 +4,8 @@ import json
 from docx import Document
 import io
 import ezdxf
+import tempfile
+import os
 
 # --- FUNZIONE PER GENERARE IL DOCUMENTO WORD STANDARD ---
 def genera_word_report(dati):
@@ -72,18 +74,28 @@ file_cad_caricato = st.file_uploader("📂 Carica un file CAD (.dxf) con le spec
 
 testo_da_cad = ""
 if file_cad_caricato is not None:
-    bytes_data = file_cad_caricato.read()
-    stream = io.BytesIO(bytes_data)
-    doc_dxf = ezdxf.read(stream)
-    msp = doc_dxf.modelspace()
-    testi_estratto = []
-    for entity in msp:
-        if entity.dxftype() == 'TEXT':
-            testi_estratto.append(entity.dxf.text)
-        elif entity.dxftype() == 'MTEXT':
-            testi_estratto.append(entity.text)
-    testo_da_cad = "\n".join(testi_estratto)
-    st.success(f"File CAD '{file_cad_caricato.name}' letto con successo!")
+    try:
+        # Salvataggio temporaneo sicuro del file DXF caricato
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp_file:
+            tmp_file.write(file_cad_caricato.getvalue())
+            tmp_path = tmp_file.name
+        
+        doc_dxf = ezdxf.readfile(tmp_path)
+        msp = doc_dxf.modelspace()
+        testi_estratto = []
+        for entity in msp:
+            if entity.dxftype() == 'TEXT':
+                testi_estratto.append(entity.dxf.text)
+            elif entity.dxftype() == 'MTEXT':
+                testi_estratto.append(entity.text)
+        
+        testo_da_cad = "\n".join(testi_estratto)
+        st.success(f"File CAD '{file_cad_caricato.name}' letto con successo!")
+        
+        # Pulizia del file temporaneo
+        os.unlink(tmp_path)
+    except Exception as e:
+        st.error(f"Errore nella lettura del file DXF: {e}")
 
 testo_commerciale = st.text_area(
     "Incolla qui le note del progetto o il capitolato:", 
@@ -231,37 +243,4 @@ if 'dati_ultimi' in st.session_state:
     with col_cv1:
         st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
         st.write(f"📍 **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
-        st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno', 'N.D.')}")
-        st.info(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_copertura_acciaio', 'N.D.')}")
-    with col_cv2:
-        st.markdown("#### 🧱 Controventi di Parete (Baraccatura)")
-        st.write(f"📍 **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
-        st.warning(f"🌲 **Opzione Legno:** {dati.get('controventi_parete_legno', 'N.D.')}")
-        st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
-    
-    st.markdown("---")
-    st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni e Nodi")
-    col_n1, col_n2 = st.columns(2)
-    with col_n1:
-        st.markdown("#### 🔗 Connessione Pilastro / Trave di Copertura")
-        st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
-        st.write(f"- **Organi di Collegamento:** {dati.get('conn_trave_pilastro_elementi', 'N.D.')}")
-        st.metric("Peso Acciaio Connessione", dati.get('conn_trave_pilastro_kg', 'N.D.'))
-    with col_n2:
-        st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
-        st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
-        st.write(f"- **Ancoraggi:** {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')}")
-        st.metric("Peso Acciaio Ancoraggi/Piastra", dati.get('conn_pilastro_fondazione_kg', 'N.D.'))
-    
-    st.markdown("---")
-    st.markdown("### 🔥 7. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
-    with col_f2:
-        st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
-    st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
-    
-    st.markdown("---")
-    st.markdown("### 📝 8. Relazione e Note Tecniche")
-    st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
+        st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno',
