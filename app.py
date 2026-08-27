@@ -75,7 +75,6 @@ file_cad_caricato = st.file_uploader("📂 Carica un file CAD (.dxf) con le spec
 testo_da_cad = ""
 if file_cad_caricato is not None:
     try:
-        # Salvataggio temporaneo sicuro del file DXF caricato
         with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp_file:
             tmp_file.write(file_cad_caricato.getvalue())
             tmp_path = tmp_file.name
@@ -91,8 +90,6 @@ if file_cad_caricato is not None:
         
         testo_da_cad = "\n".join(testi_estratto)
         st.success(f"File CAD '{file_cad_caricato.name}' letto con successo!")
-        
-        # Pulizia del file temporaneo
         os.unlink(tmp_path)
     except Exception as e:
         st.error(f"Errore nella lettura del file DXF: {e}")
@@ -212,35 +209,4 @@ if 'dati_ultimi' in st.session_state:
     st.info(f"**Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')} | **Stato:** {dati.get('verifica_arcarecci', 'Verificato')}")
     
     st.markdown("---")
-    st.markdown("### 📐 3. Travi Principali / Portali (Confronto Tecnologico)")
-    col_t1, col_t2, col_t3 = st.columns(3)
-    with col_t1:
-        st.markdown("#### 🌲 Legno Lamellare")
-        st.success(dati.get('travi_legno', 'N.D.'))
-    with col_t2:
-        st.markdown("#### ⚙️ Acciaio")
-        st.warning(dati.get('travi_acciaio', 'N.D.'))
-    with col_t3:
-        st.markdown("#### 🏛️ C.a.p.")
-        st.error(dati.get('travi_cap', 'N.D.'))
-    
-    st.markdown("---")
-    st.markdown("### 🏛️ 4. Pilastri (Confronto Tecnologico)")
-    col_p1, col_p2, col_p3 = st.columns(3)
-    with col_p1:
-        st.markdown("#### 🌲 Legno Lamellare")
-        st.success(dati.get('pilastri_legno', 'N.D.'))
-    with col_p2:
-        st.markdown("#### ⚙️ Acciaio")
-        st.warning(dati.get('pilastri_acciaio', 'N.D.'))
-    with col_p3:
-        st.markdown("#### 🏛️ C.a.p.")
-        st.error(dati.get('pilastri_cap', 'N.D.'))
-    
-    st.markdown("---")
-    st.markdown("### 🔗 5. Stabilizzazione e Controventi (Azioni Orizzontali)")
-    col_cv1, col_cv2 = st.columns(2)
-    with col_cv1:
-        st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
-        st.write(f"📍 **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
-        st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno',
+    st.markdown("### 📐 3. Travi Principali / Portali (
