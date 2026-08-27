@@ -169,7 +169,7 @@ Testo da analizzare:
                     
                     dati = json.loads(testo_risposta.strip())
                     st.session_state['dati_ultimi'] = dati
-                    st.success("Dimensionamento completo completato con successo!")
+                    st.success("Dimensionamento completato con successo!")
                     
             except Exception as e:
                 st.error(f"Errore durante l'elaborazione: {e}")
@@ -209,4 +209,68 @@ if 'dati_ultimi' in st.session_state:
     st.info(f"**Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')} | **Stato:** {dati.get('verifica_arcarecci', 'Verificato')}")
     
     st.markdown("---")
-    st.markdown("### 📐 3. Travi Principali / Portali (
+    st.markdown("### 📐 3. Travi Principali / Portali (Confronto Tecnologico)")
+    col_t1, col_t2, col_t3 = st.columns(3)
+    with col_t1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.success(dati.get('travi_legno', 'N.D.'))
+    with col_t2:
+        st.markdown("#### ⚙️ Acciaio")
+        st.warning(dati.get('travi_acciaio', 'N.D.'))
+    with col_t3:
+        st.markdown("#### 🏛️ C.a.p.")
+        st.error(dati.get('travi_cap', 'N.D.'))
+    
+    st.markdown("---")
+    st.markdown("### 🏛️ 4. Pilastri (Confronto Tecnologico)")
+    col_p1, col_p2, col_p3 = st.columns(3)
+    with col_p1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.success(dati.get('pilastri_legno', 'N.D.'))
+    with col_p2:
+        st.markdown("#### ⚙️ Acciaio")
+        st.warning(dati.get('pilastri_acciaio', 'N.D.'))
+    with col_p3:
+        st.markdown("#### 🏛️ C.a.p.")
+        st.error(dati.get('pilastri_cap', 'N.D.'))
+    
+    st.markdown("---")
+    st.markdown("### 🔗 5. Stabilizzazione e Controventi (Azioni Orizzontali)")
+    col_cv1, col_cv2 = st.columns(2)
+    with col_cv1:
+        st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
+        st.write(f"📍 **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
+        st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno', 'N.D.')}")
+        st.info(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_copertura_acciaio', 'N.D.')}")
+    with col_cv2:
+        st.markdown("#### 🧱 Controventi di Parete (Baraccatura)")
+        st.write(f"📍 **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
+        st.warning(f"🌲 **Opzione Legno:** {dati.get('controventi_parete_legno', 'N.D.')}")
+        st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
+    
+    st.markdown("---")
+    st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni e Nodi")
+    col_n1, col_n2 = st.columns(2)
+    with col_n1:
+        st.markdown("#### 🔗 Connessione Pilastro / Trave di Copertura")
+        st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
+        st.write(f"- **Organi di Collegamento:** {dati.get('conn_trave_pilastro_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Connessione", dati.get('conn_trave_pilastro_kg', 'N.D.'))
+    with col_n2:
+        st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
+        st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
+        st.write(f"- **Ancoraggi:** {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Ancoraggi/Piastra", dati.get('conn_pilastro_fondazione_kg', 'N.D.'))
+    
+    st.markdown("---")
+    st.markdown("### 🔥 7. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
+    with col_f2:
+        st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
+    st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
+    
+    st.markdown("---")
+    st.markdown("### 📝 8. Relazione e Note Tecniche")
+    st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
