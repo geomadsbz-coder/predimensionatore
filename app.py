@@ -40,7 +40,7 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             
             prompt = f"""
             Sei un ingegnere strutturista esperto in edifici prefabbricati in legno lamellare, acciaio e calcestruzzo armato precompresso (C.a.p.). 
-            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale di massima fornendo sempre le tre opzioni tecnologiche (Legno, Acciaio, C.a.p.) dove applicabile.
+            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale di massima. Per tutti gli elementi in legno lamellare, specifica esplicitamente la classe di resistenza (es. GL24h, GL28h, GL30h, GL32c) e le dimensioni geometriche precise in millimetri.
             
             Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi di codice markdown attorno) con queste chiavi esatte:
             - "luogo": stringa (località del progetto, se non specificata scrivi "Bolzano")
@@ -49,17 +49,17 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             - "interasse_arcarecci": float (in metri, se non specificato 1.5)
             - "sezione_arcarecci": stringa (es. "Lamellare GL24h - 120x240 mm")
             - "verifica_arcarecci": stringa (es. "Verificato a flessione e freccia")
-            - "travi_legno": stringa (es. "Trave a falda curva GL24h - 160x1000 mm")
+            - "travi_legno": stringa (es. "Trave a falda curva GL28h - 160x1000 mm")
             - "travi_acciaio": stringa (es. "Profilo IPE 500 o Traliccio in acciaio S355")
             - "travi_cap": stringa (es. "Trave a T o a tegolo in C.a.p. precompresso")
-            - "pilastri_legno": stringa (es. "Lamellare GL24h - 240x400 mm")
+            - "pilastri_legno": stringa (es. "Lamellare GL30h - 240x400 mm")
             - "pilastri_acciaio": stringa (es. "Profilo HEB 260 S355")
             - "pilastri_cap": stringa (es. "Pilastro prefabbricato in C.a.p. sezione 40x40 cm")
-            - "controventi_copertura_legno": stringa (es. "Diagonali in legno lamellare GL24h")
-            - "controventi_copertura_acciaio": stringa (es. "Croci in tondo d'acciaio Ø16 con tenditori")
-            - "controventi_copertura_pos": stringa (es. "N° 2 campi di falda in corrispondenza delle testate")
-            - "controventi_parete_legno": stringa (es. "Baraccatura di parete in legno lamellare")
-            - "controventi_parete_acciaio": stringa (es. "Diagonali verticali in profilati cavi d'acciaio RHS")
+            - "controventi_copertura_legno": stringa (es. "Diagonali in legno lamellare GL24h - 140x160 mm")
+            - "controventi_copertura_acciaio": stringa (es. "Croci in tondo d'acciaio Ø20 mm con tenditori")
+            - "controventi_copertura_pos": stringa (es. "N° 2 campi di falda in corrispondenza delle campate di testata")
+            - "controventi_parete_legno": stringa (es. "Baraccatura e diagonali in legno lamellare GL24h - 140x180 mm")
+            - "controventi_parete_acciaio": stringa (es. "Diagonali verticali in profilati cavi d'acciaio RHS 100x100x5 mm")
             - "controventi_parete_pos": stringa (es. "Campate perimetrali di testata e pareti longitudinali")
             - "note_tecniche": stringa (breve sintesi delle considerazioni di calcolo, carichi neve/vento e resistenza al fuoco)
             
@@ -67,7 +67,7 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             "{testo_commerciale}"
             """
             
-            with st.spinner('L\'ingegnere virtuale sta elaborando il dimensionamento con tripla opzione (Legno, Acciaio, C.a.p.)...'):
+            with st.spinner('L\'ingegnere virtuale sta calcolando sezioni e classi di lamellare (GL24/GL28/GL30)...'):
                 risposta_ia = model.generate_content(prompt)
                 testo_risposta = risposta_ia.text.strip()
                 if testo_risposta.startswith("```json"):
@@ -146,7 +146,7 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
                 
                 st.markdown("---")
                 st.markdown("### 📝 6. Relazione e Note Tecniche")
-                st.write(dati.get("note_note_tecniche", dati.get("note_tecniche", "Nessuna nota aggiuntiva.")))
+                st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
                     
         except Exception as e:
             st.error(f"C'è stato un problema nel calcolo strutturale: {e}")
