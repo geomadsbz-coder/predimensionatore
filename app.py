@@ -81,6 +81,7 @@ def genera_modello_3d(dati):
     interasse_portali = dati.get('interasse_portali', 5.0)
     num_appoggi = dati.get('num_appoggi', 3)
     tipo_travatura = dati.get('tipo_travatura', 'Bi-falda semplice')
+    interasse_arcarecci = dati.get('interasse_arcarecci', 1.5)
     
     num_campate = max(1, int(round(lunghezza_edificio / interasse_portali)))
     y_portali = [i * interasse_portali for i in range(num_campate + 1)]
@@ -94,13 +95,11 @@ def genera_modello_3d(dati):
         
     # 1. TELAI (PILASTRI E TRAVI)
     for idx_y, y in enumerate(y_portali):
-        
-        # Disegno Pilastri (inclusi quelli intermedi sotto il colmo se 3 o 4 appoggi)
         for idx_x, x in enumerate(x_pilastri):
             if x == 0.0 or x == luce_totale:
                 h_p = altezza_gronda
             else:
-                h_p = altezza_colmo # Pilastro centrale sotto il colmo
+                h_p = altezza_colmo
             
             show_leg = (idx_y == 0 and idx_x == 0)
             fig.add_trace(go.Scatter3d(
@@ -111,7 +110,6 @@ def genera_modello_3d(dati):
                 showlegend=show_leg
             ))
         
-        # Disegno Travi di Falda (Bi-falda continua)
         show_leg_trave = (idx_y == 0)
         if "curvo" in tipo_travatura.lower():
             import numpy as np
@@ -144,10 +142,18 @@ def genera_modello_3d(dati):
                     showlegend=show_leg_trave
                 ))
 
-    # 2. ARCARECCI LONGITUDINALI
-    x_steps = [i * (luce_totale / 2) / 4 for i in range(5)]
-    for idx_x, x_val in enumerate(x_steps):
-        z_val = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_val / (luce_totale/2))
+    # 2. ARCARECCI LONGITUDINALI (Posizionati esattamente secondo l'interasse dimensionato)
+    half_luce = luce_totale / 2.0
+    x_arc_left = []
+    curr = 0.0
+    while curr <= half_luce - 1e-5:
+        x_arc_left.append(curr)
+        curr += interasse_arcarecci
+    if not x_arc_left or abs(x_arc_left[-1] - half_luce) > 1e-5:
+        x_arc_left.append(half_luce)
+        
+    for idx_x, x_val in enumerate(x_arc_left):
+        z_val = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_val / half_luce)
         show_leg_arc = (idx_x == 0)
         fig.add_trace(go.Scatter3d(
             x=[x_val, x_val], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val],
@@ -156,55 +162,74 @@ def genera_modello_3d(dati):
             name='Arcarecci' if show_leg_arc else '',
             showlegend=show_leg_arc
         ))
-    for x_val in x_steps[1:]:
-        x_right = luce_totale - x_val
-        z_val = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_val / (luce_totale/2))
-        fig.add_trace(go.Scatter3d(
-            x=[x_right, x_right], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val],
-            mode='lines',
-            line=dict(color='gray', width=2, dash='dot'),
-            showlegend=False
-        ))
+        if x_val < half_luce - 1e-5:
+            x_right = luce_totale - x_val
+            fig.add_trace(go.Scatter3d(
+                x=[x_right, x_right], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val],
+                mode='lines',
+                line=dict(color='gray', width=2, dash='dot'),
+                showlegend=False
+            ))
 
-    # 3. CONTROVENTI DINAMICI DECISI DALL'IA
+    # 3. CONTROVENTI DINAMICI MULTIPLI (Sia in falda che in parete divisi in più moduli)
     campate_controventi = dati.get('campate_controventi_indici', [0, num_campate - 1])
+    num_sub_falda = max(1, int(round(half_luce / 5.0)))   # Un modulo di croce ogni ~5m di falda
+    num_sub_parete = max(1, int(round(altezza_gronda / 4.5))) # Un modulo in altezza ogni ~4.5m di parete
+    
     for idx in campate_controventi:
         if 0 <= idx < num_campate:
             y_start = y_portali[idx]
             y_end = y_portali[idx + 1]
             show_leg_cv_cop = (idx == campate_controventi[0])
+            show_leg_cv_par = (idx == campate_controventi[0])
             
-            # Controventi di Copertura (Inclinati sulla falda)
-            fig.add_trace(go.Scatter3d(
-                x=[0.0, luce_totale/2.0, None, 0.0, luce_totale/2.0],
-                y=[y_start, y_end, None, y_end, y_start],
-                z=[altezza_gronda, altezza_colmo, None, altezza_gronda, altezza_colmo],
-                mode='lines',
-                line=dict(color='forestgreen', width=4),
-                name='Controventi Copertura' if show_leg_cv_cop else '',
-                showlegend=show_leg_cv_cop
-            ))
-            fig.add_trace(go.Scatter3d(
-                x=[luce_totale/2.0, luce_totale, None, luce_totale/2.0, luce_totale],
-                y=[y_start, y_end, None, y_end, y_start],
-                z=[altezza_colmo, altezza_gronda, None, altezza_colmo, altezza_gronda],
-                mode='lines',
-                line=dict(color='forestgreen', width=4),
-                showlegend=False
-            ))
-            
-            # Controventi di Parete (Baraccatura perimetrale a X)
-            for x_wall in [0.0, luce_totale]:
-                show_leg_cv_par = (x_wall == 0.0 and idx == campate_controventi[0])
+            # Controventi di Copertura suddivisi in più moduli lungo la falda
+            dx_falda = half_luce / num_sub_falda
+            for s in range(num_sub_falda):
+                x_s1 = s * dx_falda
+                x_s2 = (s + 1) * dx_falda
+                z_s1 = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_s1 / half_luce)
+                z_s2 = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_s2 / half_luce)
+                
+                # Falda Sinistra
                 fig.add_trace(go.Scatter3d(
-                    x=[x_wall, x_wall, None, x_wall, x_wall],
-                    y=[y_start, y_end, None, y_start, y_end], 
-                    z=[0.0, altezza_gronda, None, altezza_gronda, 0.0], 
+                    x=[x_s1, x_s2, None, x_s1, x_s2],
+                    y=[y_start, y_end, None, y_end, y_start],
+                    z=[z_s1, z_s2, None, z_s1, z_s2],
                     mode='lines',
-                    line=dict(color='darkorange', width=4),
-                    name='Controventi Parete' if show_leg_cv_par else '',
-                    showlegend=show_leg_cv_par
+                    line=dict(color='forestgreen', width=4),
+                    name='Controventi Copertura' if (show_leg_cv_cop and s == 0) else '',
+                    showlegend=(show_leg_cv_cop and s == 0)
                 ))
+                
+                # Falda Destra
+                xr_s1 = luce_totale - x_s1
+                xr_s2 = luce_totale - x_s2
+                fig.add_trace(go.Scatter3d(
+                    x=[xr_s1, xr_s2, None, xr_s1, xr_s2],
+                    y=[y_start, y_end, None, y_end, y_start],
+                    z=[z_s1, z_s2, None, z_s1, z_s2],
+                    mode='lines',
+                    line=dict(color='forestgreen', width=4),
+                    showlegend=False
+                ))
+            
+            # Controventi di Parete suddivisi in più ordini in altezza
+            dz_parete = altezza_gronda / num_sub_parete
+            for x_wall in [0.0, luce_totale]:
+                for t in range(num_sub_parete):
+                    z_t1 = t * dz_parete
+                    z_t2 = (t + 1) * dz_parete
+                    
+                    fig.add_trace(go.Scatter3d(
+                        x=[x_wall, x_wall, None, x_wall, x_wall],
+                        y=[y_start, y_end, None, y_start, y_end], 
+                        z=[z_t1, z_t2, None, z_t2, z_t1], 
+                        mode='lines',
+                        line=dict(color='darkorange', width=4),
+                        name='Controventi Parete' if (show_leg_cv_par and x_wall == 0.0 and t == 0) else '',
+                        showlegend=(show_leg_cv_par and x_wall == 0.0 and t == 0)
+                    ))
 
     fig.update_layout(
         title=f"Modello 3D Dinamico ({num_campate} Campate, {num_campate+1} Telai - {tipo_travatura})",
@@ -351,7 +376,7 @@ Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NT
 Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e rigoroso.
 
 Devi inoltre decidere in quale campata/e posizionare i controventi di falda e di parete in base al calcolo strutturale, alla lunghezza totale ({lunghezza_edificio_ui}m) e all'interasse ({interasse_portali_ui}m, totale campate: {num_campate_calc}).
-Restituisci la lista degli indici 0-based delle campate (es. [0, {num_campate_calc}-1] per le sole estremità, o aggiungendo campate intermedie se la lunghezza o l'azione sismica/vento lo richiedono) nella chiave "campate_controventi_indici".
+Restituisci la lista degli indici 0-based delle campate nella chiave "campate_controventi_indici".
 
 Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown di alcun tipo, inizia con '{' e finisci con '}') con queste esatte chiavi:
 - "luogo": stringa
@@ -406,7 +431,6 @@ Testo da analizzare:
                         testo_risposta = testo_risposta[:-3]
                     
                     dati = json.loads(testo_risposta.strip())
-                    # Assegnazione forzata e prioritaria dei parametri geometrici inseriti dall'utente/UI
                     dati['lunghezza_edificio'] = lunghezza_edificio_ui
                     dati['interasse_portali'] = interasse_portali_ui
                     dati['luce_totale'] = luce_totale_ui
