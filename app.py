@@ -11,7 +11,7 @@ with st.sidebar:
     api_key = st.text_input("Inserisci qui la tua API Key di Google", type="password")
     st.info("L'API Key serve per far leggere il capitolato all'Intelligenza Artificiale.")
     st.markdown("---")
-    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico per strutture in legno lamellare, acciaio, C.a.p. e cicli di protezione al fuoco.")
+    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico per strutture, cicli antincendio e nodi di connessione.")
 
 st.subheader("Analisi Capitolato / Appunti di Progetto")
 testo_commerciale = st.text_area(
@@ -39,9 +39,8 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             )
             
             prompt = f"""
-            Sei un ingegnere strutturista esperto in edifici prefabbricati, protezione antincendio e dimensionamento in legno lamellare, acciaio e C.a.p. 
-            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale di massima. 
-            Inoltre, individua o deduci la classe di resistenza al fuoco richiesta (R 30, R 60 oppure R 90) per gli elementi in acciaio, e calcola in via preliminare la superficie totale in metri quadri (mq) dei profili in acciaio che necessitano di vernice intumescente (moltiplicando lo sviluppo del perimetro dei profili per la lunghezza complessiva stimata degli elementi metallici).
+            Sei un ingegnere strutturista senior esperto in edifici prefabbricati, dettagli costruttivi di nodi strutturali (legno, acciaio, C.a.p.) e protezione antincendio. 
+            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale di massima, includendo in modo dettagliato il dimensionamento delle connessioni principali (Pilastro/Trave di copertura e Pilastro/Fondazione), specificando la tipologia costruttiva, gli elementi di fissaggio (spinotti, bulloni, tirafondi) e stimando il relativo peso in kg dell'acciaio impiegato nei nodi.
             
             Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi di codice markdown attorno) con queste chiavi esatte:
             - "luogo": stringa (località del progetto, se non specificata scrivi "Bolzano")
@@ -62,106 +61,24 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             - "controventi_parete_legno": stringa (es. "Baraccatura e diagonali in legno lamellare GL24h - 140x180 mm")
             - "controventi_parete_acciaio": stringa (es. "Diagonali verticali in profilati cavi d'acciaio RHS 100x100x5 mm")
             - "controventi_parete_pos": stringa (es. "Campate perimetrali di testata e pareti longitudinali")
+            - "conn_trave_pilastro_tipo": stringa (es. "Connessione con lama d'acciaio a scomparsa inserita nel colmo/trave e perni passanti")
+            - "conn_trave_pilastro_elementi": stringa (es. "N° 12 spinotti in acciaio ad alta resistenza Ø12 mm e piastra di testa saldata")
+            - "conn_trave_pilastro_kg": stringa (es. "18.5 kg per nodo")
+            - "conn_pilastro_fondazione_tipo": stringa (es. "Piastra di base in acciaio S355 spessore 25 mm con fazzoletti di irrigidimento e bicchiere/tirafondi")
+            - "conn_pilastro_fondazione_elementi": stringa (es. "N° 4 tirafondi di ancoraggio M24 L=800 mm in acciaio 8.8 con dima di posa")
+            - "conn_pilastro_fondazione_kg": stringa (es. "34.0 kg per plinto")
             - "classe_resistenza_fuoco": stringa (es. "R 60")
             - "mq_intumescente": stringa (es. "135 mq")
-            - "dettaglio_verniciatura": stringa (es. "Ciclo di vernice intumescente reattiva spessore calcolato per profili aperti/chiusi con primer anticorrosivo e finitura protettiva")
+            - "dettaglio_verniciatura": stringa (es. "Ciclo intumescente reattivo per profili aperti/chiusi con primer e finitura")
             - "note_tecniche": stringa (breve sintesi delle considerazioni di calcolo, carichi neve/vento e verifiche)
             
             Testo da analizzare:
             "{testo_commerciale}"
             """
             
-            with st.spinner('L\'ingegnere virtuale sta elaborando il dimensionamento e calcolando i mq di vernice intumescente...'):
+            with st.spinner('L\'ingegnere virtuale sta calcolando sezioni, protezione al fuoco e dettagli esecutivi delle connessioni...'):
                 risposta_ia = model.generate_content(prompt)
                 testo_risposta = risposta_ia.text.strip()
                 if testo_risposta.startswith("```json"):
                     testo_risposta = testo_risposta[7:]
-                if testo_risposta.endswith("```"):
-                    testo_risposta = testo_risposta[:-3]
-                
-                dati = json.loads(testo_risposta.strip())
-                
-                st.success("Dimensionamento strutturale e calcolo antincendio completati con successo!")
-                
-                # Sezione 1: Parametri geometrici e ambientali
-                st.markdown("### 📍 1. Dati geometrici e climatici")
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Località", dati.get("luogo", "Bolzano"))
-                c2.metric("Carico Neve Base (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
-                c3.metric("Interasse Portali", f"{dati.get('interasse_portali', 6.0)} m")
-                c4.metric("Interasse Arcarecci", f"{dati.get('interasse_arcarecci', 1.5)} m")
-                
-                st.markdown("---")
-                
-                # Sezione 2: Arcarecci
-                st.markdown("### 🪵 2. Arcarecci di Copertura")
-                st.info(f"**Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')} | **Stato:** {dati.get('verifica_arcarecci', 'Verificato')}")
-                
-                st.markdown("---")
-                
-                # Sezione 3: Travi Principali / Portali (Confronto 3 Materiali)
-                st.markdown("### 📐 3. Travi Principali / Portali (Confronto Tecnologico)")
-                col_t1, col_t2, col_t3 = st.columns(3)
-                
-                with col_t1:
-                    st.markdown("#### 🌲 Legno Lamellare")
-                    st.success(dati.get('travi_legno', 'N.D.'))
-                with col_t2:
-                    st.markdown("#### ⚙️ Acciaio")
-                    st.warning(dati.get('travi_acciaio', 'N.D.'))
-                with col_t3:
-                    st.markdown("#### 🏛️ C.a.p.")
-                    st.error(dati.get('travi_cap', 'N.D.'))
-                
-                st.markdown("---")
-                
-                # Sezione 4: Pilastri (Confronto 3 Materiali)
-                st.markdown("### 🏛️ 4. Pilastri (Confronto Tecnologico)")
-                col_p1, col_p2, col_p3 = st.columns(3)
-                
-                with col_p1:
-                    st.markdown("#### 🌲 Legno Lamellare")
-                    st.success(dati.get('pilastri_legno', 'N.D.'))
-                with col_p2:
-                    st.markdown("#### ⚙️ Acciaio")
-                    st.warning(dati.get('pilastri_acciaio', 'N.D.'))
-                with col_p3:
-                    st.markdown("#### 🏛️ C.a.p.")
-                    st.error(dati.get('pilastri_cap', 'N.D.'))
-                
-                st.markdown("---")
-                
-                # Sezione 5: Controventi e Stabilizzazione
-                st.markdown("### 🔗 5. Stabilizzazione e Controventi (Legno vs Acciaio)")
-                
-                col_cv1, col_cv2 = st.columns(2)
-                
-                with col_cv1:
-                    st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
-                    st.write(f"📍 **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
-                    st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno', 'N.D.')}")
-                    st.info(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_copertura_acciaio', 'N.D.')}")
-                
-                with col_cv2:
-                    st.markdown("#### 🧱 Controventi di Parete (Baraccatura)")
-                    st.write(f"📍 **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
-                    st.warning(f"🌲 **Opzione Legno:** {dati.get('controventi_parete_legno', 'N.D.')}")
-                    st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
-                
-                st.markdown("---")
-                
-                # Sezione 6: Protezione Antincendio e Vernice Intumescente
-                st.markdown("### 🔥 6. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
-                col_f1, col_f2 = st.columns(2)
-                with col_f1:
-                    st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
-                with col_f2:
-                    st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
-                st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
-                
-                st.markdown("---")
-                st.markdown("### 📝 7. Relazione e Note Tecniche")
-                st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
-                    
-        except Exception as e:
-            st.error(f"C'è stato un problema nel calcolo strutturale: {e}")
+                if testo_risposta.endswith("
