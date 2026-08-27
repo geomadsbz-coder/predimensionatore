@@ -50,10 +50,13 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             - "sezione_arcarecci": stringa (es. "Lamellare GL24h - 120x240 mm")
             - "verifica_arcarecci": stringa (es. "Verificato a flessione e freccia")
             - "sezione_travi_tetto": stringa (es. "Lamellare GL24h - 160x520 mm")
-            - "sezione_pilastri": stringa (es. "Lamellare GL24h - 200x400 mm o Profilo HEB 200")
-            - "controventi_copertura_tipo": stringa (es. "Croci di sgheriglio in tondo d'acciaio Ø16 o funi con tenditori")
+            - "pilastri_legno": stringa (es. "Lamellare GL24h - 200x400 mm")
+            - "pilastri_acciaio": stringa (es. "Profilo HEB 200 S355")
+            - "controventi_copertura_legno": stringa (es. "Diagonali in legno lamellare GL24h 120x160 mm")
+            - "controventi_copertura_acciaio": stringa (es. "Croci in tondo d'acciaio Ø16 con tenditori")
             - "controventi_copertura_pos": stringa (es. "N° 2 campi di falda in corrispondenza delle campate di testata")
-            - "controventi_parete_tipo": stringa (es. "Diagonali verticali in acciaio / baraccatura di parete in legno")
+            - "controventi_parete_legno": stringa (es. "Baraccatura di parete in legno lamellare / puntoni")
+            - "controventi_parete_acciaio": stringa (es. "Diagonali verticali in profilati cavi d'acciaio RHS")
             - "controventi_parete_pos": stringa (es. "Campate perimetrali di testata e pareti longitudinali")
             - "note_tecniche": stringa (breve sintesi delle considerazioni di calcolo, vento, neve e resistenza al fuoco)
             
@@ -61,7 +64,7 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             "{testo_commerciale}"
             """
             
-            with st.spinner('L\'ingegnere virtuale sta elaborando il dimensionamento...'):
+            with st.spinner('L\'ingegnere virtuale sta elaborando il dimensionamento con doppie alternative...'):
                 risposta_ia = model.generate_content(prompt)
                 testo_risposta = risposta_ia.text.strip()
                 if testo_risposta.startswith("```json"):
@@ -94,28 +97,31 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
                     st.write(f"- **Stato Verifiche:** {dati.get('verifica_arcarecci', 'Verificato')} ")
                     
                     st.markdown("#### Travi Principali / Portali")
-                    st.success(f"**Sezione:** {dati.get('sezione_travi_tetto', 'N.D.')}")
+                    st.success(f"**Sezione (Legno Lamellare):** {dati.get('sezione_travi_tetto', 'N.D.')}")
                 
                 with col_b:
-                    st.markdown("#### Pilastri")
-                    st.warning(f"**Sezione:** {dati.get('sezione_pilastri', 'N.D.')}")
+                    st.markdown("#### Pilastri (Doppia Alternativa)")
+                    st.warning(f"🌲 **Alternativa Legno Lamellare:** {dati.get('pilastri_legno', 'N.D.')}")
+                    st.warning(f"⚙️ **Alternativa Acciaio:** {dati.get('pilastri_acciaio', 'N.D.')}")
                 
                 st.markdown("---")
                 
-                # Sezione 3: Controventi e Stabilizzazione (SEPARATI COPERTURA E PARETE)
-                st.markdown("### 🔗 3. Stabilizzazione e Controventi")
+                # Sezione 3: Controventi e Stabilizzazione con doppie alternative
+                st.markdown("### 🔗 3. Stabilizzazione e Controventi (Legno vs Acciaio)")
                 
                 col_cv1, col_cv2 = st.columns(2)
                 
                 with col_cv1:
                     st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
-                    st.write(f"- **Tipologia:** {dati.get('controventi_copertura_tipo', 'N.D.')}")
-                    st.write(f"- **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
+                    st.write(f"📍 **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
+                    st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno', 'N.D.')}")
+                    st.info(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_copertura_acciaio', 'N.D.')}")
                 
                 with col_cv2:
                     st.markdown("#### 🧱 Controventi di Parete (Baraccatura)")
-                    st.write(f"- **Tipologia:** {dati.get('controventi_parete_tipo', 'N.D.')}")
-                    st.write(f"- **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
+                    st.write(f"📍 **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
+                    st.warning(f"🌲 **Opzione Legno:** {dati.get('controventi_parete_legno', 'N.D.')}")
+                    st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
                 
                 st.markdown("---")
                 st.markdown("### 📝 4. Relazione e Note Tecniche")
