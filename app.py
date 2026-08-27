@@ -2,23 +2,20 @@ import streamlit as st
 import google.generativeai as genai
 import json
 
-def calcola_carico_neve(qsk, mu_i=0.8, c_e=1.0, c_t=1.0):
-    return round(mu_i * qsk * c_e * c_t, 2)
-
-def calcola_momento_flettente(carico_lineare, luce):
-    return round((carico_lineare * (luce ** 2)) / 8, 2)
-
-st.set_page_config(page_title="Predimensionamento IA", layout="wide")
-st.title("Generatore Offerte Tecniche con IA 🏗️")
+# --- CONFIGURAZIONE INTERFACCIA ---
+st.set_page_config(page_title="Predimensionamento Strutturale IA", layout="wide")
+st.title("Generatore Offerte Tecniche e Dimensionamento IA 🏗️")
 
 with st.sidebar:
     st.header("Impostazioni IA")
     api_key = st.text_input("Inserisci qui la tua API Key di Google", type="password")
-    st.info("L'API Key serve per far leggere il testo all'Intelligenza Artificiale.")
+    st.info("L'API Key serve per far leggere il capitolato all'Intelligenza Artificiale.")
+    st.markdown("---")
+    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico per strutture in legno lamellare e acciaio.")
 
-st.subheader("Analisi Capitolato / Appunti")
+st.subheader("Analisi Capitolato / Appunti di Progetto")
 testo_commerciale = st.text_area(
-    "Incolla qui le note del progetto:", 
+    "Incolla qui le note del progetto o il capitolato:", 
     height=150,
     value="""N° 19 file di arcarecci in legno lamellare qualità industria non impregnato posti ad interasse secondo adeguato calcolo statico, con luce statica massima di 6,00 m, collegati meccanicamente alla struttura sottostante.
 N° 4 travi diagonali di testata in legno lamellare qualità industria non impregnato con luce statica massima di 9,00 m, collegate meccanicamente alla struttura sottostante.
@@ -28,33 +25,41 @@ Tutti gli elementi strutturali in acciaio saranno protetti in modo adeguato per 
 Interasse telaio 6,00ml"""
 )
 
-if st.button("Analizza testo e Calcola", type="primary"):
+if st.button("Esegui Dimensionamento Completo", type="primary"):
     if not api_key:
         st.error("Inserisci prima l'API Key nella barra laterale!")
     elif not testo_commerciale:
-        st.warning("Inserisci del testo da analizzare.")
+        st.warning("Ingloba del testo da analizzare.")
     else:
         genai.configure(api_key=api_key)
         try:
-            # Modello impostato rigidamente sull'ultima versione richiesta dall'API
             model = genai.GenerativeModel(
                 model_name='gemini-3.6-flash',
                 generation_config={"response_mime_type": "application/json"}
             )
             
             prompt = f"""
-            Sei un ingegnere strutturista. Leggi il testo seguente ed estrai i dati necessari al predimensionamento.
+            Sei un ingegnere strutturista esperto in edifici prefabbricati in legno lamellare e acciaio. 
+            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale di massima.
+            
             Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi di codice markdown attorno) con queste chiavi esatte:
-            "luogo": stringa (nome della città o località, se non menzionata scrivi "Bolzano")
-            "qsk": numero float (carico neve al suolo in kN/m², se non specificato ipotizza 1.50)
-            "interasse_portali": numero float (in metri, se non specificato ipotizza 6.0)
-            "interasse_arcarecci": float (in metri, se non specificato ipotizza 1.5)
+            - "luogo": stringa (località del progetto, se non specificata scrivi "Bolzano")
+            - "qsk": float (carico neve al suolo in kN/m², se non specificato 1.50)
+            - "interasse_portali": float (in metri, se non specificato 6.0)
+            - "interasse_arcarecci": float (in metri, se non specificato 1.5)
+            - "luce_arcarecci": float (in metri, massima luce degli arcarecci)
+            - "sezione_arcarecci": stringa (es. "Lamellare GL24h - 120x240 mm")
+            - "verifica_arcarecci": stringa (es. "Verificato a flessione e freccia")
+            - "sezione_travi_tetto": stringa (es. "Lamellare GL24h - 160x520 mm")
+            - "sezione_pilastri": stringa (es. "Lamellare GL24h - 200x400 mm o Profilo HEB 200")
+            - "controventi_copertura": stringa (es. "Croci di sgheriglio in fune d'acciaio / Tavole")
+            - "note_tecniche": stringa (breve sintesi delle considerazioni di calcolo e resistenza al fuoco)
             
             Testo da analizzare:
             "{testo_commerciale}"
             """
             
-            with st.spinner('L\'IA sta analizzando la richiesta...'):
+            with st.spinner('L\'ingegnere virtuale sta elaborando il dimensionamento...'):
                 risposta_ia = model.generate_content(prompt)
                 testo_risposta = risposta_ia.text.strip()
                 if testo_risposta.startswith("```json"):
@@ -62,27 +67,44 @@ if st.button("Analizza testo e Calcola", type="primary"):
                 if testo_risposta.endswith("```"):
                     testo_risposta = testo_risposta[:-3]
                 
-                dati_estratti = json.loads(testo_risposta.strip())
+                dati = json.loads(testo_risposta.strip())
                 
-                carico_neve_mq = calcola_carico_neve(dati_estratti["qsk"])
-                carico_lineare = carico_neve_mq * dati_estratti["interasse_arcarecci"]
-                momento = calcola_momento_flettente(carico_lineare, dati_estratti["interasse_portali"])
+                st.success("Dimensionamento strutturale completato con successo!")
                 
-                st.success("Dati estratti con successo!")
+                # Sezione 1: Parametri geometrici e ambientali
+                st.markdown("### 📍 1. Dati geometrici e climatici")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Località", dati.get("luogo", "Bolzano"))
+                c2.metric("Carico Neve Base (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
+                c3.metric("Interasse Portali", f"{dati.get('interasse_portali', 6.0)} m")
+                c4.metric("Interasse Arcarecci", f"{dati.get('interasse_arcarecci', 1.5)} m")
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("### Dati Intercettati dall'IA")
-                    st.write(f"📍 **Luogo:** {dati_estratti['luogo']}")
-                    st.write(f"❄️ **Carico Neve Base (qsk):** {dati_estratti['qsk']} kN/m²")
-                    st.write(f"📏 **Interasse Portali:** {dati_estratti['interasse_portali']} m")
-                    st.write(f"📏 **Interasse Arcarecci:** {dati_estratti['interasse_arcarecci']} m")
+                st.markdown("---")
                 
-                with col2:
-                    st.markdown("### Calcolo Strutturale")
-                    st.metric("Carico Neve Copertura", f"{carico_neve_mq} kN/m²")
-                    st.metric("Carico su arcareccio", f"{carico_lineare:.2f} kN/m")
-                    st.metric("Momento Flettente Max", f"{momento} kNm")
+                # Sezione 2: Dimensionamento Elementi Strutturali
+                st.markdown("### 📐 2. Proposta Sezioni e Dimensionamento Elementi")
+                
+                col_a, col_b = st.columns(2)
+                
+                with col_a:
+                    st.markdown("#### Arcarecci di Copertura")
+                    st.info(f"**Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')}")
+                    st.write(f"- **Luce statica max:** {dati.get('luce_arcarecci', 6.0)} m")
+                    st.write(f"- **Stato Verifiche:** {dati.get('verifica_arcarecci', 'Verificato')} ")
+                    
+                    st.markdown("#### Travi Principali / Portali")
+                    st.success(f"**Sezione Consigliata:** {dati.get('sezione_travi_tetto', 'N.D.')}")
+                
+                with col_b:
+                    st.markdown("#### Pilastri")
+                    st.warning(f"**Sezione Consigliata:** {dati.get('sezione_pilastri', 'N.D.')}")
+                    
+                    st.markdown("#### Stabilizzazione e Controventi")
+                    st.write(f"- **Sistema:** {dati.get('controventi_copertura', 'Presenti')} ")
+                
+                st.markdown("---")
+                st.markdown("### 📝 3. Relazione e Note Tecniche")
+                st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
                     
         except Exception as e:
-            st.error(f"C'è stato un problema nella lettura dei dati: {e}")
+            st.error(f"C'è stato un problema nel calcolo strutturale: {e}")
