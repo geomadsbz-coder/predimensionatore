@@ -95,6 +95,8 @@ def genera_modello_3d(dati):
         
     # 1. TELAI (PILASTRI E TRAVI)
     for idx_y, y in enumerate(y_portali):
+        
+        # Disegno Pilastri
         for idx_x, x in enumerate(x_pilastri):
             if x == 0.0 or x == luce_totale:
                 h_p = altezza_gronda
@@ -110,50 +112,36 @@ def genera_modello_3d(dati):
                 showlegend=show_leg
             ))
         
-        if num_appoggi == 2:
-            show_leg_trave = (idx_y == 0)
-            if "curvo" in tipo_travatura.lower():
-                import numpy as np
-                x_left = np.linspace(0, luce_totale/2, 10)
-                z_left = altezza_gronda + (altezza_colmo - altezza_gronda)*(x_left/(luce_totale/2)) - 0.2*np.sin(np.pi*x_left/(luce_totale/2))
-                x_right = np.linspace(luce_totale/2, luce_totale, 10)
-                z_right = altezza_colmo - (altezza_colmo - altezza_gronda)*((x_right - luce_totale/2)/(luce_totale/2)) + 0.2*np.sin(np.pi*(x_right - luce_totale/2)/(luce_totale/2))
-                
-                fig.add_trace(go.Scatter3d(
-                    x=list(x_left) + list(x_right), y=[y]*20, z=list(z_left) + list(z_right),
-                    mode='lines',
-                    line=dict(color='firebrick', width=6),
-                    name='Travi di Falda' if show_leg_trave else '',
-                    showlegend=show_leg_trave
-                ))
-            else:
-                fig.add_trace(go.Scatter3d(
-                    x=[0, luce_totale/2, luce_totale], y=[y, y, y], z=[altezza_gronda, altezza_colmo, altezza_gronda],
-                    mode='lines',
-                    line=dict(color='firebrick', width=6),
-                    name='Travi di Falda' if show_leg_trave else '',
-                    showlegend=show_leg_trave
-                ))
-                if "giuntata" in tipo_travatura.lower():
-                    fig.add_trace(go.Scatter3d(
-                        x=[luce_totale/2], y=[y], z=[altezza_colmo],
-                        mode='markers',
-                        marker=dict(size=6, color='gold'),
-                        name='Giunto in Colmo' if show_leg_trave else '',
-                        showlegend=show_leg_trave
-                    ))
+        # Disegno Travi di Falda (Mantenendo sempre la configurazione continua a bi-falda)
+        show_leg_trave = (idx_y == 0)
+        if "curvo" in tipo_travatura.lower():
+            import numpy as np
+            x_left = np.linspace(0, luce_totale/2, 10)
+            z_left = altezza_gronda + (altezza_colmo - altezza_gronda)*(x_left/(luce_totale/2)) - 0.2*np.sin(np.pi*x_left/(luce_totale/2))
+            x_right = np.linspace(luce_totale/2, luce_totale, 10)
+            z_right = altezza_colmo - (altezza_colmo - altezza_gronda)*((x_right - luce_totale/2)/(luce_totale/2)) + 0.2*np.sin(np.pi*(x_right - luce_totale/2)/(luce_totale/2))
+            
+            fig.add_trace(go.Scatter3d(
+                x=list(x_left) + list(x_right), y=[y]*20, z=list(z_left) + list(z_right),
+                mode='lines',
+                line=dict(color='firebrick', width=6),
+                name='Travi di Falda' if show_leg_trave else '',
+                showlegend=show_leg_trave
+            ))
         else:
-            for i in range(len(x_pilastri) - 1):
-                x_start = x_pilastri[i]
-                x_end = x_pilastri[i+1]
-                x_mid = (x_start + x_end) / 2
-                z_mid = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_mid / (luce_totale/2) if x_mid <= luce_totale/2 else (luce_totale - x_mid)/(luce_totale/2))
-                show_leg_trave = (idx_y == 0 and i == 0)
+            fig.add_trace(go.Scatter3d(
+                x=[0, luce_totale/2, luce_totale], y=[y, y, y], z=[altezza_gronda, altezza_colmo, altezza_gronda],
+                mode='lines',
+                line=dict(color='firebrick', width=6),
+                name='Travi di Falda' if show_leg_trave else '',
+                showlegend=show_leg_trave
+            ))
+            if "giuntata" in tipo_travatura.lower():
                 fig.add_trace(go.Scatter3d(
-                    x=[x_start, x_mid, x_end], y=[y, y, y], z=[altezza_gronda, z_mid, altezza_gronda],
-                    mode='lines',
-                    line=dict(color='firebrick', width=6),
-                    name='Travi di Falda' if show_leg_trave else '',
+                    x=[luce_totale/2], y=[y], z=[altezza_colmo],
+                    mode='markers',
+                    marker=dict(size=6, color='gold'),
+                    name='Giunto in Colmo' if show_leg_trave else '',
                     showlegend=show_leg_trave
                 ))
 
