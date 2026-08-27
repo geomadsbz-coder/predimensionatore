@@ -11,7 +11,7 @@ with st.sidebar:
     api_key = st.text_input("Inserisci qui la tua API Key di Google", type="password")
     st.info("L'API Key serve per far leggere il capitolato all'Intelligenza Artificiale.")
     st.markdown("---")
-    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico per strutture in legno lamellare, acciaio e C.a.p.")
+    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico per strutture in legno lamellare, acciaio, C.a.p. e cicli di protezione al fuoco.")
 
 st.subheader("Analisi Capitolato / Appunti di Progetto")
 testo_commerciale = st.text_area(
@@ -39,8 +39,9 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             )
             
             prompt = f"""
-            Sei un ingegnere strutturista esperto in edifici prefabbricati in legno lamellare, acciaio e calcestruzzo armato precompresso (C.a.p.). 
-            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale di massima. Per tutti gli elementi in legno lamellare, specifica esplicitamente la classe di resistenza (es. GL24h, GL28h, GL30h, GL32c) e le dimensioni geometriche precise in millimetri.
+            Sei un ingegnere strutturista esperto in edifici prefabbricati, protezione antincendio e dimensionamento in legno lamellare, acciaio e C.a.p. 
+            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale di massima. 
+            Inoltre, individua o deduci la classe di resistenza al fuoco richiesta (R 30, R 60 oppure R 90) per gli elementi in acciaio, e calcola in via preliminare la superficie totale in metri quadri (mq) dei profili in acciaio che necessitano di vernice intumescente (moltiplicando lo sviluppo del perimetro dei profili per la lunghezza complessiva stimata degli elementi metallici).
             
             Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi di codice markdown attorno) con queste chiavi esatte:
             - "luogo": stringa (località del progetto, se non specificata scrivi "Bolzano")
@@ -61,13 +62,16 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
             - "controventi_parete_legno": stringa (es. "Baraccatura e diagonali in legno lamellare GL24h - 140x180 mm")
             - "controventi_parete_acciaio": stringa (es. "Diagonali verticali in profilati cavi d'acciaio RHS 100x100x5 mm")
             - "controventi_parete_pos": stringa (es. "Campate perimetrali di testata e pareti longitudinali")
-            - "note_tecniche": stringa (breve sintesi delle considerazioni di calcolo, carichi neve/vento e resistenza al fuoco)
+            - "classe_resistenza_fuoco": stringa (es. "R 60")
+            - "mq_intumescente": stringa (es. "135 mq")
+            - "dettaglio_verniciatura": stringa (es. "Ciclo di vernice intumescente reattiva spessore calcolato per profili aperti/chiusi con primer anticorrosivo e finitura protettiva")
+            - "note_tecniche": stringa (breve sintesi delle considerazioni di calcolo, carichi neve/vento e verifiche)
             
             Testo da analizzare:
             "{testo_commerciale}"
             """
             
-            with st.spinner('L\'ingegnere virtuale sta calcolando sezioni e classi di lamellare (GL24/GL28/GL30)...'):
+            with st.spinner('L\'ingegnere virtuale sta elaborando il dimensionamento e calcolando i mq di vernice intumescente...'):
                 risposta_ia = model.generate_content(prompt)
                 testo_risposta = risposta_ia.text.strip()
                 if testo_risposta.startswith("```json"):
@@ -77,7 +81,7 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
                 
                 dati = json.loads(testo_risposta.strip())
                 
-                st.success("Dimensionamento strutturale completato con successo!")
+                st.success("Dimensionamento strutturale e calcolo antincendio completati con successo!")
                 
                 # Sezione 1: Parametri geometrici e ambientali
                 st.markdown("### 📍 1. Dati geometrici e climatici")
@@ -145,7 +149,18 @@ if st.button("Esegui Dimensionamento Completo", type="primary"):
                     st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
                 
                 st.markdown("---")
-                st.markdown("### 📝 6. Relazione e Note Tecniche")
+                
+                # Sezione 6: Protezione Antincendio e Vernice Intumescente
+                st.markdown("### 🔥 6. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
+                col_f1, col_f2 = st.columns(2)
+                with col_f1:
+                    st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
+                with col_f2:
+                    st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
+                st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
+                
+                st.markdown("---")
+                st.markdown("### 📝 7. Relazione e Note Tecniche")
                 st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
                     
         except Exception as e:
