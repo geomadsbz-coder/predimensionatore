@@ -3,6 +3,27 @@ import google.generativeai as genai
 import json
 from docx import Document
 import io
+import ezdxf
+
+# --- FUNZIONE PER ESTRARRE TESTI DA UN FILE DXF (CAD) ---
+def estrai_testo_da_dxf(file_bytes):
+    try:
+        # Legge il flusso di byte del file DXF caricato
+        stream = io.BytesIO(file_bytes)
+        doc = ezdxf.read(stream)
+        msp = doc.modelspace()
+        
+        testi_estratto = []
+        # Estrae tutte le entità di testo o testo multilinea presenti nel CAD
+        for entity in msp:
+            if entity.dxftype() == 'TEXT':
+                testi_estratto.append(entity.dxf.text)
+            elif entity.dxftype() == 'MTEXT':
+                testi_estratto.append(entity.text)
+                
+        return "\n".join(testi_estratto)
+    except Exception as e:
+        return f"Errore nella lettura del file DXF: {e}"
 
 # --- FUNZIONE PER GENERARE IL DOCUMENTO WORD ---
 def genera_word_report(dati):
@@ -69,11 +90,21 @@ with st.sidebar:
     api_key = st.text_input("Inserisci qui la tua API Key di Google", type="password")
     st.info("L'API Key serve per far leggere il capitolato all'Intelligenza Artificiale.")
     st.markdown("---")
-    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico avanzato, carichi NTC 2018, nodi e report in Word.")
+    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico, lettura file CAD (DXF), NTC 2018 e report in Word.")
 
-st.subheader("Analisi Capitolato / Appunti di Progetto")
+st.subheader("Analisi Capitolato / Appunti di Progetto e File CAD")
+
+# Aggiungiamo la possibilità di caricare un file CAD DXF
+file_cad_caricato = st.file_uploader("📂 Carica un file CAD (.dxf) con le specifiche o note del progetto (facoltativo)", type=["dxf"])
+
+testo_da_cad = ""
+if file_cad_caricato is not None:
+    bytes_data = file_cad_caricato.read()
+    testo_da_cad = estrai_testo_da_dxf(bytes_data)
+    st.success(f"File CAD '{file_cad_caricato.name}' letto con successo! Testi rilevati ed integrati nell'analisi.")
+
 testo_commerciale = st.text_area(
-    "Incolla qui le note del progetto o il capitolato:", 
+    "Incolla qui le note del progetto o il capitolato (integrato automaticamente con il CAD se caricato):", 
     height=150,
     value="""N° 19 file di arcarecci in legno lamellare qualità industria non impregnato posti ad interasse secondo adeguato calcolo statico, con luce statica massima di 6,00 m, collegati meccanicamente alla struttura sottostante.
 N° 4 travi diagonali di testata in legno lamellare qualità industria non impregnato con luce statica massima di 9,00 m, collegate meccanicamente alla struttura sottostante.
@@ -84,12 +115,13 @@ Interasse telaio 6,00ml
 Luogo di costruzione: 32044 Pieve di Cadore (BL)"""
 )
 
-if st.button("Esegui Dimensionamento Conservativo con Vento", type="primary"):
+if st.button("Esegui Dimensionamento da Testo + CAD", type="primary"):
     if not api_key:
         st.error("Inserisci prima l'API Key nella barra laterale!")
-    elif not testo_commerciale:
-        st.warning("Incolla del testo da analizzare.")
     else:
+        # Uniamo le note scritte a mano con quelle estratte dal file CAD
+        testo_totale_analisi = testo_commerciale + "\n\n--- INFORMAZIONI ESTRATTE DAL FILE CAD (.DXF) ---\n" + testo_da_cad
+        
         genai.configure(api_key=api_key)
         try:
             model = genai.GenerativeModel(
@@ -99,8 +131,8 @@ if st.button("Esegui Dimensionamento Conservativo con Vento", type="primary"):
             
             prompt = f"""
             Sei un ingegnere strutturista senior esperto in edifici prefabbricati industriali, analisi dei carichi climatici secondo NTC 2018 (Neve e Vento) e progettazione esecutiva di nodi e strutture. 
-            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e robusto. 
-            In particolare, in base alla località o al contesto, calcola o deduci rigorosamente i parametri del Vento (Zona Vento NTC 2018, velocità di riferimento del vento vb,0, e pressione del vento di progetto) oltre al carico neve (qsk).
+            Analizza il testo tecnico e le informazioni estratte dal file CAD fornite di seguito, e calcola un predimensionamento strutturale conservativo e robusto. 
+            In particolare, in base alla località o al contesto, calcola o deduci rigorosamente i parametri del Vento (Zona Vento NTC 2018, velocità di riferimento vb,0, e pressione di progetto) oltre al carico neve (qsk).
             
             Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi di codice markdown attorno) con queste chiavi esatte:
             - "luogo": stringa (località del progetto, se non specificata scrivi "Bolzano")
@@ -134,11 +166,11 @@ if st.button("Esegui Dimensionamento Conservativo con Vento", type="primary"):
             - "dettaglio_verniciatura": stringa (es. "Ciclo di vernice intumescente reattiva ad alto spessore per profili aperti pesanti con primer epossidico anticorrosivo")
             - "note_tecniche": stringa (Considerazioni di calcolo rigorose: inclusione delle azioni del vento secondo NTC 2018 con verifica al ribaltamento e suzione di copertura, sezioni maggiorate per margini conservativi.)
             
-            Testo da analizzare:
-            "{testo_commerciale}"
+            Testo e dati da analizzare:
+            "{testo_totale_analisi}"
             """
             
-            with st.spinner('L\'ingegnere virtuale sta elaborando i carichi climatici e le verifiche strutturali...'):
+            with st.spinner('L\'ingegnere virtuale sta analizzando il file CAD e calcolando i dimensionamenti...'):
                 risposta_ia = model.generate_content(prompt)
                 testo_risposta = risposta_ia.text.strip()
                 if testo_risposta.startswith("```json"):
@@ -147,14 +179,11 @@ if st.button("Esegui Dimensionamento Conservativo con Vento", type="primary"):
                     testo_risposta = testo_risposta[:-3]
                 
                 dati = json.loads(testo_risposta.strip())
-                
-                # Salviamo i dati nella sessione di Streamlit per poterli usare per il download
                 st.session_state['dati_ultimi'] = dati
-                
-                st.success("Dimensionamento strutturale e analisi Vento/Neve completati con successo!")
+                st.success("Analisi del CAD e dimensionamento completati con successo!")
                 
         except Exception as e:
-            st.error(f"C'è stato un problema nel calcolo strutturale: {e}")
+            st.error(f"C'è stato un problema nel calcolo strutturale o nella lettura del CAD: {e}")
 
 # Se i dati sono stati calcolati, mostriamo la dashboard e il pulsante di download
 if 'dati_ultimi' in st.session_state:
@@ -162,7 +191,6 @@ if 'dati_ultimi' in st.session_state:
     
     st.markdown("---")
     
-    # Pulsante di Download in Word
     col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
     with col_dl2:
         word_file = genera_word_report(dati)
@@ -177,7 +205,6 @@ if 'dati_ultimi' in st.session_state:
     
     st.markdown("---")
     
-    # Sezione 1: Parametri geometrici e climatici (Neve e Vento)
     st.markdown("### 📍 1. Dati geometrici e climatici (NTC 2018)")
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Località", dati.get("luogo", "Bolzano"))
@@ -187,17 +214,12 @@ if 'dati_ultimi' in st.session_state:
     c5.metric("Interasse Portali", f"{dati.get('interasse_portali', 6.0)} m")
     
     st.markdown("---")
-    
-    # Sezione 2: Arcarecci
     st.markdown("### 🪵 2. Arcarecci di Copertura")
     st.info(f"**Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')} | **Stato:** {dati.get('verifica_arcarecci', 'Verificato')}")
     
     st.markdown("---")
-    
-    # Sezione 3: Travi Principali / Portali (Confronto 3 Materiali)
     st.markdown("### 📐 3. Travi Principali / Portali (Confronto Tecnologico)")
     col_t1, col_t2, col_t3 = st.columns(3)
-    
     with col_t1:
         st.markdown("#### 🌲 Legno Lamellare")
         st.success(dati.get('travi_legno', 'N.D.'))
@@ -209,11 +231,8 @@ if 'dati_ultimi' in st.session_state:
         st.error(dati.get('travi_cap', 'N.D.'))
     
     st.markdown("---")
-    
-    # Sezione 4: Pilastri (Confronto 3 Materiali)
     st.markdown("### 🏛️ 4. Pilastri (Confronto Tecnologico)")
     col_p1, col_p2, col_p3 = st.columns(3)
-    
     with col_p1:
         st.markdown("#### 🌲 Legno Lamellare")
         st.success(dati.get('pilastri_legno', 'N.D.'))
@@ -225,38 +244,27 @@ if 'dati_ultimi' in st.session_state:
         st.error(dati.get('pilastri_cap', 'N.D.'))
     
     st.markdown("---")
-    
-    # Sezione 5: Controventi e Stabilizzazione
     st.markdown("### 🔗 5. Stabilizzazione e Controventi (Legno vs Acciaio)")
-    
     col_cv1, col_cv2 = st.columns(2)
-    
     with col_cv1:
         st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
         st.write(f"📍 **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
         st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno', 'N.D.')}")
         st.info(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_copertura_acciaio', 'N.D.')}")
-    
     with col_cv2:
         st.markdown("#### 🧱 Controventi di Parete (Baraccatura)")
         st.write(f"📍 **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
-        dati.get('controventi_parete_legno', 'N.D.')
         st.warning(f"🌲 **Opzione Legno:** {dati.get('controventi_parete_legno', 'N.D.')}")
         st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
     
     st.markdown("---")
-    
-    # Sezione 6: Dettaglio Connessioni e Nodi
     st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni e Nodi")
-    
     col_n1, col_n2 = st.columns(2)
-    
     with col_n1:
         st.markdown("#### 🔗 Connessione Pilastro / Trave di Copertura")
         st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
         st.write(f"- **Organi di Collegamento:** {dati.get('conn_trave_pilastro_elementi', 'N.D.')}")
         st.metric("Peso Acciaio Connessione", dati.get('conn_trave_pilastro_kg', 'N.D.'))
-    
     with col_n2:
         st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
         st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
@@ -264,8 +272,6 @@ if 'dati_ultimi' in st.session_state:
         st.metric("Peso Acciaio Ancoraggi/Piastra", dati.get('conn_pilastro_fondazione_kg', 'N.D.'))
     
     st.markdown("---")
-    
-    # Sezione 7: Protezione Antincendio e Vernice Intumescente
     st.markdown("### 🔥 7. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
     col_f1, col_f2 = st.columns(2)
     with col_f1:
