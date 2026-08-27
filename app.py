@@ -36,12 +36,9 @@ if st.button("Analizza testo e Calcola", type="primary"):
     else:
         genai.configure(api_key=api_key)
         try:
-            # TROVA AUTOMATICAMENTE IL MODELLO ATTIVO
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            chosen_model = available_models[0] if available_models else 'gemini-1.5-flash'
-            
+            # Modello impostato rigidamente sull'ultima versione richiesta dall'API
             model = genai.GenerativeModel(
-                model_name=chosen_model,
+                model_name='gemini-3.6-flash',
                 generation_config={"response_mime_type": "application/json"}
             )
             
@@ -51,7 +48,7 @@ if st.button("Analizza testo e Calcola", type="primary"):
             "luogo": stringa (nome della città o località, se non menzionata scrivi "Bolzano")
             "qsk": numero float (carico neve al suolo in kN/m², se non specificato ipotizza 1.50)
             "interasse_portali": numero float (in metri, se non specificato ipotizza 6.0)
-            "interasse_arcarecci": numero float (in metri, se non specificato ipotizza 1.5)
+            "interasse_arcarecci": float (in metri, se non specificato ipotizza 1.5)
             
             Testo da analizzare:
             "{testo_commerciale}"
