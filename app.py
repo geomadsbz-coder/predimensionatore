@@ -8,7 +8,7 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 import io
 import ezdxf
 
-# --- FUNZIONE PER IMPOSTARE IL COLORE DEL TESTO E STILI ---
+# --- FUNZIONE PER STILI WORD ---
 def add_styled_paragraph(doc, text, style_type='Normal', bold=False, font_size=11, color_rgb=(51,51,51), space_after=6):
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(space_after)
@@ -24,7 +24,6 @@ def add_styled_paragraph(doc, text, style_type='Normal', bold=False, font_size=1
 def genera_word_report(dati):
     doc = Document()
     
-    # Impostazione Margini Pagina (Standard A4 / Carta Intestata)
     sections = doc.sections
     for section in sections:
         section.top_margin = Inches(1.0)
@@ -32,7 +31,7 @@ def genera_word_report(dati):
         section.left_margin = Inches(1.0)
         section.right_margin = Inches(1.0)
         
-    # --- INTESTAZIONE AZIENDALE (CARTA STAMPATA WOLFSYSTEM) ---
+    # INTESTAZIONE AZIENDALE
     header_table = doc.add_table(rows=1, cols=2)
     header_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     header_table.autofit = False
@@ -42,7 +41,6 @@ def genera_word_report(dati):
     cell_left.width = Inches(4.0)
     cell_right.width = Inches(2.5)
     
-    # Logo / Nome Azienda a Sinistra
     p_logo = cell_left.paragraphs[0]
     p_logo.paragraph_format.space_after = Pt(0)
     r_logo = p_logo.add_run("WOLFSYSTEM")
@@ -58,7 +56,6 @@ def genera_word_report(dati):
     r_sub.font.size = Pt(9)
     r_sub.font.color.rgb = RGBColor(100, 100, 100)
     
-    # Dati Progetto a Destra
     p_meta = cell_right.paragraphs[0]
     p_meta.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p_meta.paragraph_format.space_after = Pt(0)
@@ -72,7 +69,6 @@ def genera_word_report(dati):
     p_line = doc.add_paragraph()
     p_line.paragraph_format.space_after = Pt(12)
     
-    # --- CORPO DELLA RELAZIONE TECNICA ---
     h1 = doc.add_heading(level=1)
     h1.paragraph_format.space_before = Pt(12)
     h1.paragraph_format.space_after = Pt(6)
@@ -91,53 +87,45 @@ def genera_word_report(dati):
         r.font.color.rgb = RGBColor(50, 50, 50)
         return h
 
-    # 1. Dati Climatici
     add_section_title("1. Parametri Geometrici e Climatici (NTC 2018)")
     add_styled_paragraph(doc, f"• Località di intervento: {dati.get('luogo', 'Bolzano')}")
     add_styled_paragraph(doc, f"• Carico neve al suolo (qsk): {dati.get('qsk', 1.5)} kN/m²")
-    add_styled_paragraph(doc, f"• Azione del Vento: {dati.get('zona_vento', 'Zona 3')} — Pressione di calcolo: {dati.get('pressione_vento', '0.80 kN/m²')}")
+    add_styled_paragraph(doc, f"• Azione del Vento: {dati.get('zona_vento', 'Zona 3')} — Pressione: {dati.get('pressione_vento', '0.80 kN/m²')}")
     add_styled_paragraph(doc, f"• Interasse Portali: {dati.get('interasse_portali', 6.0)} m | Interasse Arcarecci: {dati.get('interasse_arcarecci', 1.5)} m")
 
-    # 2. Arcarecci
     add_section_title("2. Arcarecci di Copertura")
     add_styled_paragraph(doc, f"• Sezione Consigliata: {dati.get('sezione_arcarecci', 'N.D.')}")
     add_styled_paragraph(doc, f"• Stato Verifiche: {dati.get('verifica_arcarecci', 'Verificato')}")
 
-    # 3. Travi
     add_section_title("3. Travi Principali / Portali (Confronto Tecnologico)")
-    add_styled_paragraph(doc, f"• Opzione Legno Lamellare: {dati.get('travi_legno', 'N.D.')}")
-    add_styled_paragraph(doc, f"• Opzione Acciaio: {dati.get('travi_acciaio', 'N.D.')}")
-    add_styled_paragraph(doc, f"• Opzione C.a.p.: {dati.get('travi_cap', 'N.D.')}")
+    add_styled_paragraph(doc, f"• Legno Lamellare: {dati.get('travi_legno', 'N.D.')}")
+    add_styled_paragraph(doc, f"• Acciaio: {dati.get('travi_acciaio', 'N.D.')}")
+    add_styled_paragraph(doc, f"• C.a.p.: {dati.get('travi_cap', 'N.D.')}")
 
-    # 4. Pilastri
     add_section_title("4. Pilastri (Confronto Tecnologico)")
-    add_styled_paragraph(doc, f"• Opzione Legno Lamellare: {dati.get('pilastri_legno', 'N.D.')}")
-    add_styled_paragraph(doc, f"• Opzione Acciaio: {dati.get('pilastri_acciaio', 'N.D.')}")
-    add_styled_paragraph(doc, f"• Opzione C.a.p.: {dati.get('pilastri_cap', 'N.D.')}")
+    add_styled_paragraph(doc, f"• Legno Lamellare: {dati.get('pilastri_legno', 'N.D.')}")
+    add_styled_paragraph(doc, f"• Acciaio: {dati.get('pilastri_acciaio', 'N.D.')}")
+    add_styled_paragraph(doc, f"• C.a.p.: {dati.get('pilastri_cap', 'N.D.')}")
 
-    # 5. Controventi
     add_section_title("5. Stabilizzazione e Controventi")
-    add_styled_paragraph(doc, f"• Posizionamento Copertura: {dati.get('controventi_copertura_pos', 'N.D.')}")
+    add_styled_paragraph(doc, f"• Copertura - Posizione: {dati.get('controventi_copertura_pos', 'N.D.')}")
     add_styled_paragraph(doc, f"    - Opzione Legno: {dati.get('controventi_copertura_legno', 'N.D.')}")
     add_styled_paragraph(doc, f"    - Opzione Acciaio: {dati.get('controventi_copertura_acciaio', 'N.D.')}")
-    add_styled_paragraph(doc, f"• Posizionamento Parete: {dati.get('controventi_parete_pos', 'N.D.')}")
+    add_styled_paragraph(doc, f"• Parete - Posizione: {dati.get('controventi_parete_pos', 'N.D.')}")
     add_styled_paragraph(doc, f"    - Opzione Legno: {dati.get('controventi_parete_legno', 'N.D.')}")
     add_styled_paragraph(doc, f"    - Opzione Acciaio: {dati.get('controventi_parete_acciaio', 'N.D.')}")
 
-    # 6. Connessioni
     add_section_title("6. Dettaglio Connessioni e Nodi Strutturali")
     add_styled_paragraph(doc, f"• Nodo Pilastro / Trave: {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
-    add_styled_paragraph(doc, f"    - Fissaggi: {dati.get('conn_trave_pilastro_elementi', 'N.D.')} — Peso acciaio: {dati.get('conn_trave_pilastro_kg', 'N.D.')}")
+    add_styled_paragraph(doc, f"    - Elementi: {dati.get('conn_trave_pilastro_elementi', 'N.D.')} — Peso: {dati.get('conn_trave_pilastro_kg', 'N.D.')}")
     add_styled_paragraph(doc, f"• Base Pilastro / Fondazione: {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
-    add_styled_paragraph(doc, f"    - Ancoraggi: {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')} — Peso acciaio: {dati.get('conn_pilastro_fondazione_kg', 'N.D.')}")
+    add_styled_paragraph(doc, f"    - Elementi: {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')} — Peso: {dati.get('conn_pilastro_fondazione_kg', 'N.D.')}")
 
-    # 7. Antincendio
-    add_section_title("7. Protezione Antincendio e Vernice Intumescente")
+    add_section_title("7. Protezione Antincendio")
     add_styled_paragraph(doc, f"• Classe di Resistenza al Fuoco: {dati.get('classe_resistenza_fuoco', 'R 60')}")
     add_styled_paragraph(doc, f"• Superficie Acciaio da Trattare: {dati.get('mq_intumescente', 'N.D.')}")
-    add_styled_paragraph(doc, f"• Specifiche Ciclo: {dati.get('dettaglio_verniciatura', 'N.D.')}")
+    add_styled_paragraph(doc, f"• Ciclo Antincendio: {dati.get('dettaglio_verniciatura', 'N.D.')}")
 
-    # 8. Note
     add_section_title("8. Note Tecniche e Considerazioni Finali")
     add_styled_paragraph(doc, dati.get('note_tecniche', 'Nessuna nota aggiuntiva.'))
 
@@ -182,12 +170,12 @@ if file_cad_caricato is not None:
     testo_da_cad = "\n".join(testi_estratto)
     st.success(f"File CAD '{file_cad_caricato.name}' letto con successo!")
 
-# CAMPO NOTE IMPOSTATO VUOTO CON PLACEHOLDER ESPLICATIVO
+# CAMPO NOTE VUOTO ALL'AVVIO
 testo_commerciale = st.text_area(
     "Incolla qui le note del progetto o il capitolato:", 
     height=150,
     value="",
-    placeholder="Incolla qui le note del progetto, i dati dimensionali, il luogo di costruzione (es. Pieve di Cadore) o le richieste specifiche del capitolato..."
+    placeholder="Incolla qui le note del progetto, i dati dimensionali, il luogo di costruzione o le richieste specifiche del capitolato..."
 )
 
 if st.button("Esegui Dimensionamento e Genera Carta Intestata", type="primary"):
@@ -207,7 +195,7 @@ if st.button("Esegui Dimensionamento e Genera Carta Intestata", type="primary"):
                 
                 prompt = f"""
                 Sei un ingegnere strutturista senior in WolfSystem, esperto in prefabbricazione, NTC 2018 (Neve e Vento) e nodi esecutivi.
-                Analizza il testo tecnico e restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown) con queste chiavi:
+                Analizza il testo tecnico e restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown) con queste chiavi esatte:
                 - "luogo": stringa
                 - "qsk": float
                 - "zona_vento": stringa
@@ -253,17 +241,18 @@ if st.button("Esegui Dimensionamento e Genera Carta Intestata", type="primary"):
                     
                     dati = json.loads(testo_risposta.strip())
                     st.session_state['dati_ultimi'] = dati
-                    st.success("Calcolo completato sulla carta intestata WolfSystem!")
+                    st.success("Calcolo completato con successo!")
                     
             except Exception as e:
                 st.error(f"Errore: {e}")
 
+# MOSTRA LA DASHBOARD COMPLETA A SCHERMO SE I DATI SONO DISPONIBILI
 if 'dati_ultimi' in st.session_state:
     dati = st.session_state['dati_ultimi']
     st.markdown("---")
     
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
+    col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
+    with col_dl2:
         word_file = genera_word_report(dati)
         st.download_button(
             label="📄 Scarica Relazione Tecnica su Carta Intestata WolfSystem (.docx)",
@@ -275,8 +264,97 @@ if 'dati_ultimi' in st.session_state:
         )
     
     st.markdown("---")
-    st.markdown("### 📍 Parametri e Risultati a Schermo")
-    c1, c2, c3 = st.columns(3)
+    
+    # 1. Dati Climatici
+    st.markdown("### 📍 1. Dati geometrici e climatici (NTC 2018)")
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Località", dati.get("luogo", "Bolzano"))
-    c2.metric("Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
+    c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
     c3.metric("Zona Vento", dati.get("zona_vento", "Zona 3"))
+    c4.metric("Pressione Vento", dati.get("pressione_vento", "0.80 kN/m²"))
+    c5.metric("Interasse Portali", f"{dati.get('interasse_portali', 6.0)} m")
+    
+    st.markdown("---")
+    
+    # 2. Arcarecci
+    st.markdown("### 🪵 2. Arcarecci di Copertura")
+    st.info(f"**Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')} | **Stato:** {dati.get('verifica_arcarecci', 'Verificato')}")
+    
+    st.markdown("---")
+    
+    # 3. Travi
+    st.markdown("### 📐 3. Travi Principali / Portali (Confronto Tecnologico)")
+    col_t1, col_t2, col_t3 = st.columns(3)
+    with col_t1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.success(dati.get('travi_legno', 'N.D.'))
+    with col_t2:
+        st.markdown("#### ⚙️ Acciaio")
+        st.warning(dati.get('travi_acciaio', 'N.D.'))
+    with col_t3:
+        st.markdown("#### 🏛️ C.a.p.")
+        st.error(dati.get('travi_cap', 'N.D.'))
+    
+    st.markdown("---")
+    
+    # 4. Pilastri
+    st.markdown("### 🏛️ 4. Pilastri (Confronto Tecnologico)")
+    col_p1, col_p2, col_p3 = st.columns(3)
+    with col_p1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.success(dati.get('pilastri_legno', 'N.D.'))
+    with col_p2:
+        st.markdown("#### ⚙️ Acciaio")
+        st.warning(dati.get('pilastri_acciaio', 'N.D.'))
+    with col_p3:
+        st.markdown("#### 🏛️ C.a.p.")
+        st.error(dati.get('pilastri_cap', 'N.D.'))
+    
+    st.markdown("---")
+    
+    # 5. Controventi
+    st.markdown("### 🔗 5. Stabilizzazione e Controventi (Legno vs Acciaio)")
+    col_cv1, col_cv2 = st.columns(2)
+    with col_cv1:
+        st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
+        st.write(f"📍 **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
+        st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno', 'N.D.')}")
+        st.info(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_copertura_acciaio', 'N.D.')}")
+    with col_cv2:
+        st.markdown("#### 🧱 Controventi di Parete (Baraccatura)")
+        st.write(f"📍 **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
+        st.warning(f"🌲 **Opzione Legno:** {dati.get('controventi_parete_legno', 'N.D.')}")
+        st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
+    
+    st.markdown("---")
+    
+    # 6. Connessioni
+    st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni e Nodi")
+    col_n1, col_n2 = st.columns(2)
+    with col_n1:
+        st.markdown("#### 🔗 Connessione Pilastro / Trave di Copertura")
+        st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
+        st.write(f"- **Organi di Collegamento:** {dati.get('conn_trave_pilastro_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Connessione", dati.get('conn_trave_pilastro_kg', 'N.D.'))
+    with col_n2:
+        st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
+        st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
+        st.write(f"- **Organi di Ancoraggio:** {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Ancoraggi/Piastra", dati.get('conn_pilastro_fondazione_kg', 'N.D.'))
+    
+    st.markdown("---")
+    
+    # 7. Antincendio
+    st.markdown("### 🔥 7. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
+    with col_f2:
+        st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
+    st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
+    
+    st.markdown("---")
+    
+    # 8. Note
+    st.markdown("### 📝 8. Relazione e Note Tecniche")
+    st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
