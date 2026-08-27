@@ -4,4 +4,3 @@ python-docx
 ezdxf
 plotly
 PyPDF2
-numpy
