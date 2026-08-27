@@ -11,7 +11,7 @@ with st.sidebar:
     api_key = st.text_input("Inserisci qui la tua API Key di Google", type="password")
     st.info("L'API Key serve per far leggere il capitolato all'Intelligenza Artificiale.")
     st.markdown("---")
-    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico avanzato per strutture, cicli antincendio e nodi di connessione ad alte prestazioni (NTC 2018).")
+    st.markdown("**WolfSystem / Tecnico:** Strumenti di calcolo automatico avanzato per strutture, carichi neve/vento (NTC 2018), cicli antincendio e nodi di connessione.")
 
 st.subheader("Analisi Capitolato / Appunti di Progetto")
 testo_commerciale = st.text_area(
@@ -22,10 +22,11 @@ N° 4 travi diagonali di testata in legno lamellare qualità industria non impre
 Stabilizzazione sul piano orizzontale e verticale della struttura.
 Baraccatura di parete composta da elementi in legno posti ad interasse variabile con luce statica variabile.
 Tutti gli elementi strutturali in acciaio saranno protetti in modo adeguato per la verifica al fuoco.
-Interasse telaio 6,00ml"""
+Interasse telaio 6,00ml
+Luogo di costruzione: 32044 Pieve di Cadore (BL)"""
 )
 
-if st.button("Esegui Dimensionamento Conservativo", type="primary"):
+if st.button("Esegui Dimensionamento Conservativo con Vento", type="primary"):
     if not api_key:
         st.error("Inserisci prima l'API Key nella barra laterale!")
     elif not testo_commerciale:
@@ -39,17 +40,19 @@ if st.button("Esegui Dimensionamento Conservativo", type="primary"):
             )
             
             prompt = f"""
-            Sei un ingegnere strutturista senior esperto in edifici prefabbricati industriali, dimensionamento rigoroso secondo NTC 2018 / Eurocodici e progettazione esecutiva di nodi metallici e in legno lamellare. 
-            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale **conservativo e robusto** (tenendo conto di eventuali carichi neve e vento gravosi). 
-            Attenzione particolare alle connessioni: evita soluzioni sottodimensionate. Pretendi piastre spesse, tirafondi multipli di grande diametro, spinotti multipli ad alta resistenza e pesi in acciaio realistici per strutture pesanti.
+            Sei un ingegnere strutturista senior esperto in edifici prefabbricati industriali, analisi dei carichi climatici secondo NTC 2018 (Neve e Vento) e progettazione esecutiva di nodi e strutture. 
+            Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e robusto. 
+            In particolare, in base alla località o al contesto, calcola o deduci rigorosamente i parametri del Vento (Zona Vento NTC 2018, velocità di riferimento del vento vb,0, e pressione del vento di progetto) oltre al carico neve (qsk).
             
             Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi di codice markdown attorno) con queste chiavi esatte:
             - "luogo": stringa (località del progetto, se non specificata scrivi "Bolzano")
-            - "qsk": float (carico neve al suolo in kN/m², se non specificato 1.50)
+            - "qsk": float (carico neve al suolo in kN/m², es. 1.50)
+            - "zona_vento": stringa (es. "Zona 3 (vb,0 = 27 m/s)")
+            - "pressione_vento": stringa (es. "0.85 kN/m² (Pressione di picco stimata)")
             - "interasse_portali": float (in metri, se non specificato 6.0)
             - "interasse_arcarecci": float (in metri, se non specificato 1.5)
             - "sezione_arcarecci": stringa (es. "Lamellare GL24h - 140x280 mm")
-            - "verifica_arcarecci": stringa (es. "Verificato a flessione, taglio e freccia instabile")
+            - "verifica_arcarecci": stringa (es. "Verificato a flessione, taglio, freccia e suzione vento")
             - "travi_legno": stringa (es. "Trave a falda curva GL30h - 180x1120 mm")
             - "travi_acciaio": stringa (es. "Profilo IPE 550 / Traliccio pesante in acciaio S355")
             - "travi_cap": stringa (es. "Trave a tegolo alare precompresso in C.a.p.")
@@ -57,7 +60,7 @@ if st.button("Esegui Dimensionamento Conservativo", type="primary"):
             - "pilastri_acciaio": stringa (es. "Profilo HEB 300 S355")
             - "pilastri_cap": stringa (es. "Pilastro prefabbricato in C.a.p. sezione 50x50 cm")
             - "controventi_copertura_legno": stringa (es. "Diagonali in legno lamellare GL24h - 160x200 mm")
-            - "controventi_copertura_acciaio": stringa (es. "Doppie croci di Sant'Andrea in tondo d'acciaio Ø24 mm con tenditori registrabili")
+            - "controventi_copertura_acciaio": stringa (es. "Doppie croci di Sant'Andrea in tondo d'acciaio Ø24 mm con tenditori registrabili per azioni di vento e sisma")
             - "controventi_copertura_pos": stringa (es. "N° 2 campi di falda completi in corrispondenza delle campate di testata")
             - "controventi_parete_legno": stringa (es. "Baraccatura pesante e diagonali in legno lamellare GL24h - 160x220 mm")
             - "controventi_parete_acciaio": stringa (es. "Diagonali verticali rigide in profilati cavi strutturali RHS 140x140x8 mm")
@@ -66,18 +69,18 @@ if st.button("Esegui Dimensionamento Conservativo", type="primary"):
             - "conn_trave_pilastro_elementi": stringa (es. "N° 20 spinotti in acciaio ad alta resistenza Ø16 mm disposti su maglia fitta + copripiastre esterne bullonate")
             - "conn_trave_pilastro_kg": stringa (es. "45.0 kg per nodo (configurazione pesante)")
             - "conn_pilastro_fondazione_tipo": stringa (es. "Piastra di base d'acciaio S355 spessore 35 mm irrigidita da n° 4 fazzoletti triangolari per lato e collare di base")
-            - "conn_pilastro_fondazione_elementi": stringa (es. "N° 8 tirafondi di ancoraggio ad alta resistenza M30 L=1200 mm in acciaio 8.8 con piastra d'ancoraggio inferiore")
+            - "conn_pilastro_fondazione_elementi": stringa (es. "N° 8 tirafondi di ancoraggio ad alta resistenza M30 L=1200 mm in acciaio 8.8 con dima di posa")
             - "conn_pilastro_fondazione_kg": stringa (es. "95.0 kg per plinto di fondazione")
             - "classe_resistenza_fuoco": stringa (es. "R 60")
             - "mq_intumescente": stringa (es. "160 mq")
             - "dettaglio_verniciatura": stringa (es. "Ciclo di vernice intumescente reattiva ad alto spessore per profili aperti pesanti con primer epossidico anticorrosivo")
-            - "note_tecniche": stringa (Considerazioni di calcolo rigorose: sezioni maggiorate per garantire margini di sicurezza conservativi contro carichi neve e vento estremi, nodi irrigiditi e verificati a rottura duttile.)
+            - "note_tecniche": stringa (Considerazioni di calcolo rigorose: inclusione delle azioni del vento secondo NTC 2018 con verifica al ribaltamento e suzione di copertura, sezioni maggiorate per margini conservativi.)
             
             Testo da analizzare:
             "{testo_commerciale}"
             """
             
-            with st.spinner('L\'ingegnere virtuale sta ricalcolando il dimensionamento con criteri di sicurezza conservativi...'):
+            with st.spinner('L\'ingegnere virtuale sta elaborando i carichi climatici (Neve + Vento NTC 2018) e le verifiche strutturali...'):
                 risposta_ia = model.generate_content(prompt)
                 testo_risposta = risposta_ia.text.strip()
                 if testo_risposta.startswith("```json"):
@@ -87,15 +90,16 @@ if st.button("Esegui Dimensionamento Conservativo", type="primary"):
                 
                 dati = json.loads(testo_risposta.strip())
                 
-                st.success("Dimensionamento strutturale conservativo completato con successo!")
+                st.success("Dimensionamento strutturale e analisi Vento/Neve completati con successo!")
                 
-                # Sezione 1: Parametri geometrici e ambientali
-                st.markdown("### 📍 1. Dati geometrici e climatici")
-                c1, c2, c3, c4 = st.columns(4)
+                # Sezione 1: Parametri geometrici e climatici (Neve e Vento)
+                st.markdown("### 📍 1. Dati geometrici e climatici (NTC 2018)")
+                c1, c2, c3, c4, c5 = st.columns(5)
                 c1.metric("Località", dati.get("luogo", "Bolzano"))
-                c2.metric("Carico Neve Base (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
-                c3.metric("Interasse Portali", f"{dati.get('interasse_portali', 6.0)} m")
-                c4.metric("Interasse Arcarecci", f"{dati.get('interasse_arcarecci', 1.5)} m")
+                c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
+                c3.metric("Zona Vento", dati.get("zona_vento", "Zona 3"))
+                c4.metric("Pressione Vento", dati.get("pressione_vento", "0.80 kN/m²"))
+                c5.metric("Interasse Portali", f"{dati.get('interasse_portali', 6.0)} m")
                 
                 st.markdown("---")
                 
@@ -137,7 +141,7 @@ if st.button("Esegui Dimensionamento Conservativo", type="primary"):
                 
                 st.markdown("---")
                 
-                # Sezione 5: Controventi e Stabilizzazione
+                # Sezione 5: Controventi e Stabilizzazione (Vento e Sisma)
                 st.markdown("### 🔗 5. Stabilizzazione e Controventi (Legno vs Acciaio)")
                 
                 col_cv1, col_cv2 = st.columns(2)
@@ -156,8 +160,8 @@ if st.button("Esegui Dimensionamento Conservativo", type="primary"):
                 
                 st.markdown("---")
                 
-                # Sezione 6: Dettaglio Connessioni e Nodi (Rafforzato)
-                st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni e Nodi (Configurazione Pesante)")
+                # Sezione 6: Dettaglio Connessioni e Nodi
+                st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni e Nodi")
                 
                 col_n1, col_n2 = st.columns(2)
                 
