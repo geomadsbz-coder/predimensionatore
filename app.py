@@ -135,14 +135,39 @@ def genera_modello_3d(dati):
             name=''
         ))
 
-    # 3. CONTROVENTI DI FALDA
-    for y_c in [y_portali[0], y_portali[-2]]:
+    # 3. CONTROVENTI DI COPERTURA (Falda a croce di Sant'Andrea) nelle campate di estremità
+    bay_pairs = [(y_portali[0], y_portali[1]), (y_portali[-2], y_portali[-1])]
+    for y_start, y_end in bay_pairs:
+        # Falda sinistra
         fig.add_trace(go.Scatter3d(
-            x=[0, luce_totale/2, luce_totale/2, 0], y=[y_c, y_c+interasse_portali, y_c, y_c+interasse_portali], z=[altezza_gronda, altezza_colmo, altezza_gronda, altezza_colmo],
+            x=[0, luce_totale/2, None, luce_totale/2, 0],
+            y=[y_start, y_end, None, y_start, y_end],
+            z=[altezza_gronda, altezza_colmo, None, altezza_colmo, altezza_gronda],
             mode='lines',
-            line=dict(color='green', width=3),
-            name='Controventi' if y_c == y_portali[0] else ''
+            line=dict(color='forestgreen', width=3),
+            name='Controventi di Copertura' if y_start == y_portali[0] else ''
         ))
+        # Falda destra
+        fig.add_trace(go.Scatter3d(
+            x=[luce_totale/2, luce_totale, None, luce_totale, luce_totale/2],
+            y=[y_start, y_end, None, y_start, y_end],
+            z=[altezza_colmo, altezza_gronda, None, altezza_colmo, altezza_gronda],
+            mode='lines',
+            line=dict(color='forestgreen', width=3),
+            name=''
+        ))
+
+    # 4. CONTROVENTI DI PARETE (Baraccatura a croce) nelle pareti laterali esterne
+    for x_wall in [0.0, luce_totale]:
+        for y_start, y_end in bay_pairs:
+            fig.add_trace(go.Scatter3d(
+                x=[x_wall, x_wall, None, x_wall, x_wall],
+                y=[y_start, y_end, None, y_start, y_end],
+                z=[0, altezza_gronda, None, altezza_gronda, 0],
+                mode='lines',
+                line=dict(color='darkorange', width=3),
+                name='Controventi di Parete' if x_wall == 0.0 and y_start == y_portali[0] else ''
+            ))
 
     fig.update_layout(
         title=f"Modello 3D Struttura ({dati.get('num_appoggi', 2)} Appoggi - {dati.get('tipo_travatura', 'Bi-falda')})",
