@@ -386,7 +386,8 @@ if st.button("Esegui Dimensionamento Dinamico e Modello 3D", type="primary"):
             try:
                 model = genai.GenerativeModel(
                     model_name='gemini-3.6-flash',
-                    generation_config={"response_mime_type": "application/json"}
+                    generation_config={"response_mime_type": "application/json",
+        "temperature": 0.0}
                 )
                 
                 prompt = f"""
