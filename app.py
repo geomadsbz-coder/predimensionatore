@@ -10,7 +10,41 @@ import plotly.graph_objects as go
 import PyPDF2
 import numpy as np
 
-# --- MOTORE DI CALCOLO STRUTTURALE DETERMINISTICO E RIGOROSO (NTC 2018) ---
+# --- MOTORE DI CALCOLO STRUTTURALE DETERMINISTICO DA COORDINATE (NTC 2018) ---
+def estrai_parametri_ntc_da_coordinate(lat, lon):
+    # Algoritmo deterministico basato su bounding box e coordinate geografiche italiane
+    if lat > 45.8:
+        altitudine_stimata = 650.0  # Zona montana / alpina (es. Trentino, Alto Adige, Belluno)
+        zona_neve = "Zona I (Alpina)"
+        qsk = round(1.39 * (1.0 + (altitudine_stimata / 728.0) ** 2), 2)
+        zona_vento = "Zona 1 (vb = 25 m/s)"
+        pressione_vento = round(0.50 * (1.0 + altitudine_stimata/1000.0), 2)
+        zona_sismica = "Zona 3 (Bassa sismicità / Appennino settentrionale-Alpi)"
+    elif lat > 44.5:
+        altitudine_stimata = 50.0   # Pianura Padana / Nord-Centro
+        zona_neve = "Zona II (Padana / Interna)"
+        qsk = round(0.85 * (1.0 + (altitudine_stimata / 778.0) ** 2), 2)
+        zona_vento = "Zona 3 (vb = 27 m/s - Interna)"
+        pressione_vento = 0.48
+        zona_sismica = "Zona 2 / 3 (Media/Bassa sismicità)"
+    elif lat > 41.0:
+        altitudine_stimata = 150.0  # Centro Italia / Appennino centrale
+        zona_neve = "Zona II (Interna Centro)"
+        qsk = round(0.85 * (1.0 + (altitudine_stimata / 778.0) ** 2), 2)
+        zona_vento = "Zona 2 (vb = 28 m/s)"
+        pressione_vento = 0.52
+        zona_sismica = "Zona 1 / 2 (Alta/Media sismicità - Fascia appenninica)"
+    else:
+        altitudine_stimata = 50.0   # Sud e Isole
+        zona_neve = "Zona III (Meridionale / Costiera)"
+        qsk = round(0.50 * (1.0 + (altitudine_stimata / 833.0) ** 2), 2)
+        zona_vento = "Zona 3 o 4 (Sud/Isole)"
+        pressione_vento = 0.58
+        zona_sismica = "Zona 1 (Alta sismicità - es. Calabria/Sicilia)"
+        
+    luogo_str = f"Coordinate Google Maps ({lat:.4f}, {lon:.4f}) - Alt. stimata: {altitudine_stimata}m - {zona_neve}"
+    return luogo_str, qsk, zona_vento, f"{pressione_vento} kN/mq", zona_sismica, altitudine_stimata
+
 def esegui_calcolo_deterministico(dati_geo):
     luce = dati_geo['luce_totale']
     interasse = dati_geo['interasse_portali']
@@ -18,36 +52,11 @@ def esegui_calcolo_deterministico(dati_geo):
     h_colmo = dati_geo['altezza_colmo']
     num_appoggi = dati_geo['num_appoggi']
     
-    provincia = dati_geo.get('provincia', 'Bolzano')
-    altitudine = dati_geo.get('altitudine', 250.0)
+    lat = dati_geo.get('latitudine', 46.4983)
+    lon = dati_geo.get('longitudine', 11.3548)
     
-    # Calcolo deterministico Neve qsk (NTC 2018 in base a Provincia/Zona e Altitudine)
-    # Zone Alpine / Montane (Zona I): Bolzano, Trento, Belluno, Sondrio, Cuneo, Aosta, Udine
-    provincie_zona_1 = ['Bolzano', 'Trento', 'Belluno', 'Sondrio', 'Cuneo', 'Aosta', 'Udine']
-    provincie_zona_3 = ['Roma', 'Napoli', 'Palermo', 'Catania', 'Bari', 'Cagliari', 'Lecce', 'Taranto', 'Reggio Calabria']
+    luogo_str, qsk, zona_vento, pressione_vento, zona_sismica, altitudine_stimata = estrai_parametri_ntc_da_coordinate(lat, lon)
     
-    if provincia in provincie_zona_1:
-        # Zona I (Alpina): qsk = 1.39 * [1 + (a/728)^2] (kPa)
-        qsk = round(1.39 * (1.0 + (altitudine / 728.0) ** 2), 2)
-        zona_neve = "Zona I (Alpina)"
-        zona_vento = "Zona 1 (vb = 25 m/s)"
-        pressione_vento = round(0.50 * (1.0 + altitudine/1000.0), 2)
-        zona_sismica = "Zona 3 / 4 (Verifica specifica locale)"
-    elif provincia in provincie_zona_3:
-        # Zona III
-        qsk = round(0.50 * (1.0 + (altitudine / 833.0) ** 2), 2)
-        zona_neve = "Zona III (Meridionale / Costiera)"
-        zona_vento = "Zona 2 o 3 (Costiera/Sud)"
-        pressione_vento = 0.58
-        zona_sismica = "Zona 1 o 2 (Alta sismicità)"
-    else:
-        # Zona II (Pianura Padana / Centro Italia standard: es. Milano, Verona, Vicenza, Torino, Brescia, Bergamo, Treviso, Padova)
-        qsk = round(0.85 * (1.0 + (altitudine / 778.0) ** 2), 2)
-        zona_neve = "Zona II (Padana / Interna)"
-        zona_vento = "Zona 3 (vb = 27 m/s - Interna)"
-        pressione_vento = round(0.48 * (1.0 + altitudine/1200.0), 2)
-        zona_sismica = "Zona 2 / 3 (Media/Bassa sismicità)"
-
     g1 = 0.15  
     g2 = 0.25  
     if "Presente" in dati_geo.get('impianto_fv_desc', ''):
@@ -89,10 +98,10 @@ def esegui_calcolo_deterministico(dati_geo):
     mq_acciaio = round((luce + h_gronda * 2) * (dati_geo['num_campate'] + 1) * 0.6, 1)
 
     risultati_deterministici = {
-        "luogo": f"{provincia} ({altitudine} m s.l.m.) - Neve: {zona_neve}",
+        "luogo": luogo_str,
         "qsk": qsk,
         "zona_vento": zona_vento,
-        "pressione_vento": f"{pressione_vento} kN/mq",
+        "pressione_vento": pressione_vento,
         "zona_sismica": zona_sismica,
         "classe_uso": "Classe II (Edifici industriali ordinari)",
         "fattore_struttura_q": "q = 2.0 (Struttura intelaiata)",
@@ -126,7 +135,7 @@ def esegui_calcolo_deterministico(dati_geo):
         "classe_resistenza_fuoco": "R 60 (Conforme ai requisiti antincendio attività industriali)",
         "mq_intumescente": f"{mq_acciaio} mq",
         "dettaglio_verniciatura": "Primer epossidico anticorrosivo + Vernice intumescente a spessore testata per 60 min",
-        "note_tecniche": f"Predimensionamento deterministico NTC 2018 basato su località: {provincia}, Altitudine: {altitudine}m (Neve qsk = {qsk} kN/mq)."
+        "note_tecniche": f"Predimensionamento deterministico NTC 2018 basato su coordinate GPS: {lat}, {lon} (Altitudine stimata: {altitudine_stimata}m, qsk = {qsk} kN/mq)."
     }
     return risultati_deterministici
 
@@ -196,7 +205,7 @@ def genera_word_report(dati, distinta):
     doc.add_heading('Relazione Tecnica di Predimensionamento e Calcolo (NTC 2018)', 0)
     
     doc.add_heading('1. Parametri Geometrici, Climatici, Sismici e di Configurazione', level=1)
-    doc.add_paragraph(f"Località / Neve: {dati.get('luogo', 'Bolzano')}")
+    doc.add_paragraph(f"Località / Coordinate: {dati.get('luogo', 'N.D.')}")
     doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')} | Classe d'Uso: {dati.get('classe_uso', 'N.D.')} | Fattore q: {dati.get('fattore_struttura_q', 'N.D.')}")
@@ -508,20 +517,21 @@ testo_commerciale = st.text_area(
     key="testo_commerciale"
 )
 
-st.markdown("### 📍 Località e Parametri Climatici (NTC 2018)")
-col_loc1, col_loc2 = st.columns(2)
-with col_loc1:
-    provincia_ui = st.selectbox(
-        "Provincia / Area Principale", 
-        ["Bolzano", "Trento", "Belluno", "Verona", "Vicenza", "Milano", "Torino", "Brescia", "Bergamo", "Udine", "Treviso", "Padova", "Roma", "Napoli", "Altra"], 
-        key="provincia_ui"
+st.markdown("### 📍 Coordinate Geografiche (Google Maps)")
+col_geo1, col_geo2 = st.columns(2)
+with col_geo1:
+    latitudine_ui = st.number_input(
+        "Latitudine (°N)", 
+        min_value=35.0, max_value=47.5, value=46.4983, step=0.0001, format="%.4f", 
+        key="latitudine_ui",
+        help="Inserisci la latitudine da Google Maps (es. 46.4983 per Bolzano)."
     )
-with col_loc2:
-    altitudine_ui = st.number_input(
-        "Altitudine s.l.m. (m)", 
-        min_value=0.0, max_value=3000.0, value=250.0, step=50.0, format="%.1f", 
-        key="altitudine_ui",
-        help="Altitudine del sito di costruzione per il calcolo automatico del carico neve qsk (NTC 2018)."
+with col_geo2:
+    longitudine_ui = st.number_input(
+        "Longitudine (°E)", 
+        min_value=6.0, max_value=19.0, value=11.3548, step=0.0001, format="%.4f", 
+        key="longitudine_ui",
+        help="Inserisci la longitudine da Google Maps (es. 11.3548 per Bolzano)."
     )
 
 st.markdown("### 📐 Dimensioni Geometriche dell'Edificio (Modificabili)")
@@ -598,25 +608,25 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
             'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
             'impianto_fv_desc': impianto_fv_desc,
             'carico_aggiuntivo': carico_aggiuntivo,
-            'provincia': provincia_ui,
-            'altitudine': altitudine_ui
+            'latitudine': latitudine_ui,
+            'longitudine': longitudine_ui
         }
 
         if modalita_deterministica:
-            with st.spinner('Esecuzione motore analitico deterministico NTC 2018 (Neve, Vento, Sisma)...'):
+            with st.spinner('Estrazione parametri NTC 2018 da coordinate ed esecuzione calcolo deterministico...'):
                 dati = esegui_calcolo_deterministico(dati_base)
                 dati.update(dati_base)
                 distinta_elementi = calcola_distinta_elementi(dati)
                 dati['distinta'] = distinta_elementi
                 st.session_state['dati_ultimi'] = dati
-                st.success("Modello deterministico calcolato con successo!")
+                st.success("Modello deterministico basato su coordinate calcolato con successo!")
         else:
             if not api_key:
                 st.error("Inserisci prima l'API Key di Google nella barra laterale per usare la modalità IA!")
             else:
                 dati_config_str = f"""
-                --- CONFIGURAZIONE GEOMETRICA E CARICHI SCELTI ---
-                - Provincia: {provincia_ui} | Altitudine: {altitudine_ui} m
+                --- CONFIGURAZIONE GEOMETRICA E COORDINATE GPS ---
+                - Latitudine: {latitudine_ui} | Longitudine: {longitudine_ui}
                 - Lunghezza Edificio: {lunghezza_edificio_ui} m
                 - Interasse Portali: {interasse_portali_ui} m (Numero Campate: {num_campate_calc})
                 - Luce Totale: {luce_totale_ui} m
@@ -731,7 +741,7 @@ if 'dati_ultimi' in st.session_state:
     st.markdown("---")
     st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Località", dati.get("luogo", "Bolzano"))
+    c1.metric("Località / Coordinate", dati.get("luogo", "N.D."))
     c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
     c3.metric("Zona Vento", dati.get("zona_vento", "N.D."))
     c4.metric("Pressione Vento", dati.get("pressione_vento", "N.D."))
