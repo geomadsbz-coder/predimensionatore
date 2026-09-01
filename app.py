@@ -9,40 +9,74 @@ import os
 import plotly.graph_objects as go
 import PyPDF2
 import numpy as np
+import re
+
+# --- FUNZIONE PER ESTRARRE COORDINATE DA URL DI GOOGLE MAPS ---
+def estrai_coordinate_da_url(url):
+    if not url:
+        return 46.4983, 11.3548 # Default Bolzano
+    
+    # Cerca il pattern tipico di Google Maps '@lat,lon'
+    match_at = re.search(r'@([-0-9.]+),([-0-9.]+)', url)
+    if match_at:
+        try:
+            return float(match_at.group(1)), float(match_at.group(2))
+        except ValueError:
+            pass
+            
+    # Cerca il pattern con parametri di ricerca o condivisione 'q=lat,lon' o 'll=lat,lon'
+    match_q = re.search(r'[?&](?:q|ll|s_loc)=([-0-9.]+),([-0-9.]+)', url)
+    if match_q:
+        try:
+            return float(match_q.group(1)), float(match_q.group(2))
+        except ValueError:
+            pass
+            
+    # Se l'utente ha incollato direttamente coordinate grezze es. "46.4983, 11.3548"
+    match_raw = re.search(r'([-0-9.]+)\s*,\s*([-0-9.]+)', url)
+    if match_raw:
+        try:
+            lat = float(match_raw.group(1))
+            lon = float(match_raw.group(2))
+            if 35.0 <= lat <= 47.5 and 6.0 <= lon <= 19.0:
+                return lat, lon
+        except ValueError:
+            pass
+            
+    return 46.4983, 11.3548 # Fallback default
 
 # --- MOTORE DI CALCOLO STRUTTURALE DETERMINISTICO DA COORDINATE (NTC 2018) ---
 def estrai_parametri_ntc_da_coordinate(lat, lon):
-    # Algoritmo deterministico basato su bounding box e coordinate geografiche italiane
     if lat > 45.8:
-        altitudine_stimata = 650.0  # Zona montana / alpina (es. Trentino, Alto Adige, Belluno)
-        zona_neve = "Zona I (Alpina)"
+        altitudine_stimata = 650.0  
+        zona_neve = "Zona I (Alpina / Montana)"
         qsk = round(1.39 * (1.0 + (altitudine_stimata / 728.0) ** 2), 2)
         zona_vento = "Zona 1 (vb = 25 m/s)"
         pressione_vento = round(0.50 * (1.0 + altitudine_stimata/1000.0), 2)
-        zona_sismica = "Zona 3 (Bassa sismicità / Appennino settentrionale-Alpi)"
+        zona_sismica = "Zona 3 (Bassa sismicità / Area Alpina)"
     elif lat > 44.5:
-        altitudine_stimata = 50.0   # Pianura Padana / Nord-Centro
+        altitudine_stimata = 50.0   
         zona_neve = "Zona II (Padana / Interna)"
         qsk = round(0.85 * (1.0 + (altitudine_stimata / 778.0) ** 2), 2)
         zona_vento = "Zona 3 (vb = 27 m/s - Interna)"
         pressione_vento = 0.48
         zona_sismica = "Zona 2 / 3 (Media/Bassa sismicità)"
     elif lat > 41.0:
-        altitudine_stimata = 150.0  # Centro Italia / Appennino centrale
+        altitudine_stimata = 150.0  
         zona_neve = "Zona II (Interna Centro)"
         qsk = round(0.85 * (1.0 + (altitudine_stimata / 778.0) ** 2), 2)
         zona_vento = "Zona 2 (vb = 28 m/s)"
         pressione_vento = 0.52
-        zona_sismica = "Zona 1 / 2 (Alta/Media sismicità - Fascia appenninica)"
+        zona_sismica = "Zona 1 / 2 (Alta/Media sismicità - Appennino)"
     else:
-        altitudine_stimata = 50.0   # Sud e Isole
+        altitudine_stimata = 50.0   
         zona_neve = "Zona III (Meridionale / Costiera)"
         qsk = round(0.50 * (1.0 + (altitudine_stimata / 833.0) ** 2), 2)
         zona_vento = "Zona 3 o 4 (Sud/Isole)"
         pressione_vento = 0.58
         zona_sismica = "Zona 1 (Alta sismicità - es. Calabria/Sicilia)"
         
-    luogo_str = f"Coordinate Google Maps ({lat:.4f}, {lon:.4f}) - Alt. stimata: {altitudine_stimata}m - {zona_neve}"
+    luogo_str = f"Google Maps ({lat:.4f}, {lon:.4f}) - Alt. stimata: {altitudine_stimata}m - {zona_neve}"
     return luogo_str, qsk, zona_vento, f"{pressione_vento} kN/mq", zona_sismica, altitudine_stimata
 
 def esegui_calcolo_deterministico(dati_geo):
@@ -135,7 +169,7 @@ def esegui_calcolo_deterministico(dati_geo):
         "classe_resistenza_fuoco": "R 60 (Conforme ai requisiti antincendio attività industriali)",
         "mq_intumescente": f"{mq_acciaio} mq",
         "dettaglio_verniciatura": "Primer epossidico anticorrosivo + Vernice intumescente a spessore testata per 60 min",
-        "note_tecniche": f"Predimensionamento deterministico NTC 2018 basato su coordinate GPS: {lat}, {lon} (Altitudine stimata: {altitudine_stimata}m, qsk = {qsk} kN/mq)."
+        "note_tecniche": f"Predimensionamento deterministico NTC 2018 basato su coordinate GPS (lat: {lat}, lon: {lon}). Altitudine stimata: {altitudine_stimata}m, qsk = {qsk} kN/mq."
     }
     return risultati_deterministici
 
@@ -205,7 +239,7 @@ def genera_word_report(dati, distinta):
     doc.add_heading('Relazione Tecnica di Predimensionamento e Calcolo (NTC 2018)', 0)
     
     doc.add_heading('1. Parametri Geometrici, Climatici, Sismici e di Configurazione', level=1)
-    doc.add_paragraph(f"Località / Coordinate: {dati.get('luogo', 'N.D.')}")
+    doc.add_paragraph(f"Località / Google Maps: {dati.get('luogo', 'N.D.')}")
     doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')} | Classe d'Uso: {dati.get('classe_uso', 'N.D.')} | Fattore q: {dati.get('fattore_struttura_q', 'N.D.')}")
@@ -517,22 +551,14 @@ testo_commerciale = st.text_area(
     key="testo_commerciale"
 )
 
-st.markdown("### 📍 Coordinate Geografiche (Google Maps)")
-col_geo1, col_geo2 = st.columns(2)
-with col_geo1:
-    latitudine_ui = st.number_input(
-        "Latitudine (°N)", 
-        min_value=35.0, max_value=47.5, value=46.4983, step=0.0001, format="%.4f", 
-        key="latitudine_ui",
-        help="Inserisci la latitudine da Google Maps (es. 46.4983 per Bolzano)."
-    )
-with col_geo2:
-    longitudine_ui = st.number_input(
-        "Longitudine (°E)", 
-        min_value=6.0, max_value=19.0, value=11.3548, step=0.0001, format="%.4f", 
-        key="longitudine_ui",
-        help="Inserisci la longitudine da Google Maps (es. 11.3548 per Bolzano)."
-    )
+st.markdown("### 📍 Localizzazione Cantiere (Google Maps)")
+maps_url_ui = st.text_input(
+    "Incolla il link di Google Maps del cantiere (es. https://maps.app.goo.gl/... o https://www.google.com/maps/...)",
+    value="",
+    placeholder="Incolla qui l'URL copiato da Google Maps...",
+    key="maps_url_ui",
+    help="Vai su Google Maps, seleziona il punto esatto, clicca su Condividi o copia il link dalla barra del browser e incollalo qui."
+)
 
 st.markdown("### 📐 Dimensioni Geometriche dell'Edificio (Modificabili)")
 col_dim1, col_dim2, col_dim3, col_dim4, col_dim5 = st.columns(5)
@@ -590,6 +616,7 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
     if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or altezza_colmo_ui <= 0:
         st.warning("⚠️ Inserisci tutte le dimensioni geometriche con valori superiori a zero prima di eseguire il calcolo.")
     else:
+        lat_estratta, lon_estratta = estrai_coordinate_da_url(maps_url_ui)
         num_campate_calc = max(1, int(round(lunghezza_edificio_ui / interasse_portali_ui)))
         impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
         
@@ -608,25 +635,25 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
             'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
             'impianto_fv_desc': impianto_fv_desc,
             'carico_aggiuntivo': carico_aggiuntivo,
-            'latitudine': latitudine_ui,
-            'longitudine': longitudine_ui
+            'latitudine': lat_estratta,
+            'longitudine': lon_estratta
         }
 
         if modalita_deterministica:
-            with st.spinner('Estrazione parametri NTC 2018 da coordinate ed esecuzione calcolo deterministico...'):
+            with st.spinner('Analisi link Google Maps ed esecuzione calcolo deterministico NTC 2018...'):
                 dati = esegui_calcolo_deterministico(dati_base)
                 dati.update(dati_base)
                 distinta_elementi = calcola_distinta_elementi(dati)
                 dati['distinta'] = distinta_elementi
                 st.session_state['dati_ultimi'] = dati
-                st.success("Modello deterministico basato su coordinate calcolato con successo!")
+                st.success(f"Link Google Maps analizzato (Lat: {lat_estratta}, Lon: {lon_estratta})! Calcolo completato.")
         else:
             if not api_key:
                 st.error("Inserisci prima l'API Key di Google nella barra laterale per usare la modalità IA!")
             else:
                 dati_config_str = f"""
-                --- CONFIGURAZIONE GEOMETRICA E COORDINATE GPS ---
-                - Latitudine: {latitudine_ui} | Longitudine: {longitudine_ui}
+                --- CONFIGURAZIONE GEOMETRICA E LINK MAPS ---
+                - Link Google Maps: {maps_url_ui} (Lat: {lat_estratta}, Lon: {lon_estratta})
                 - Lunghezza Edificio: {lunghezza_edificio_ui} m
                 - Interasse Portali: {interasse_portali_ui} m (Numero Campate: {num_campate_calc})
                 - Luce Totale: {luce_totale_ui} m
@@ -741,7 +768,7 @@ if 'dati_ultimi' in st.session_state:
     st.markdown("---")
     st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Località / Coordinate", dati.get("luogo", "N.D."))
+    c1.metric("Località / Mappa", dati.get("luogo", "N.D."))
     c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
     c3.metric("Zona Vento", dati.get("zona_vento", "N.D."))
     c4.metric("Pressione Vento", dati.get("pressione_vento", "N.D."))
@@ -829,7 +856,6 @@ if 'dati_ultimi' in st.session_state:
     if dati.get('tipo_travatura') == "Trave di falda giuntata in colmo":
         st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
     
-    st.markdown("---")
     st.markdown("### 🔥 9. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
     col_f1, col_f2 = st.columns(2)
     with col_f1:
