@@ -112,7 +112,7 @@ def calcola_distinta_elementi(dati):
     n_appoggi = dati['num_appoggi']
     i_arcarecci = dati.get('interasse_arcarecci', 1.5)
 
-    num_campate = max(1, int(round(L / i_portali)))
+    num_campate = max(1, int(round(L / i_portali))) if i_portali > 0 else 1
     num_telai = num_campate + 1
 
     num_pilastri_totali = num_telai * n_appoggi
@@ -143,7 +143,7 @@ def calcola_distinta_elementi(dati):
     num_croci_cop = num_campate_cv * (num_sub_falda * 2) 
     
     h_gronda = dati['altezza_gronda']
-    num_sub_parete = max(1, int(round(h_gronda / 4.5)))
+    num_sub_parete = max(1, int(round(h_gronda / 4.5))) if h_gronda > 0 else 1
     num_croci_par = num_campate_cv * (num_sub_parete * 2) 
 
     sviluppo_falda = ((B/2)**2 + (dati['altezza_colmo'] - h_gronda)**2)**0.5
@@ -174,9 +174,9 @@ def genera_word_report(dati, distinta):
     doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')} | Classe d'Uso: {dati.get('classe_uso', 'N.D.')} | Fattore q: {dati.get('fattore_struttura_q', 'N.D.')}")
-    doc.add_paragraph(f"Dimensioni Edificio: Lunghezza {dati.get('lunghezza_edificio', 25.0)} m | Larghezza (Luce) {dati.get('luce_totale', 39.6)} m")
-    doc.add_paragraph(f"Altezze: Gronda {dati.get('altezza_gronda', 9.0)} m | Colmo {dati.get('altezza_colmo', 12.21)} m")
-    doc.add_paragraph(f"Interasse Portali: {dati.get('interasse_portali', 5.0)} m -> N. Campate: {dati.get('num_campate', 5)} (N. Telai: {dati.get('num_campate', 5) + 1})")
+    doc.add_paragraph(f"Dimensioni Edificio: Lunghezza {dati.get('lunghezza_edificio', 0.0)} m | Larghezza (Luce) {dati.get('luce_totale', 0.0)} m")
+    doc.add_paragraph(f"Altezze: Gronda {dati.get('altezza_gronda', 0.0)} m | Colmo {dati.get('altezza_colmo', 0.0)} m")
+    doc.add_paragraph(f"Interasse Portali: {dati.get('interasse_portali', 0.0)} m -> N. Campate: {dati.get('num_campate', 0)} (N. Telai: {dati.get('num_campate', 0) + 1})")
     doc.add_paragraph(f"Configurazione Telaio: {dati.get('num_appoggi', 3)} Appoggi | Tipologia Travatura: {dati.get('tipo_travatura', 'N.D.')}")
     doc.add_paragraph(f"Copertura / Pannello: {dati.get('tipo_isolante', 'N.D.')} - Spessore: {dati.get('spessore_pannello', 'N.D.')}")
     doc.add_paragraph(f"Impianto Fotovoltaico: {dati.get('impianto_fv_desc', 'Escluso')} | Carico Extra Manuale: {dati.get('carico_aggiuntivo', 0.0)} kN/m²")
@@ -254,7 +254,7 @@ def genera_modello_3d(dati):
     tipo_travatura = dati.get('tipo_travatura', 'Bi-falda semplice')
     interasse_arcarecci = dati.get('interasse_arcarecci', 1.5)
     
-    num_campate = max(1, int(round(lunghezza_edificio / interasse_portali)))
+    num_campate = max(1, int(round(lunghezza_edificio / interasse_portali))) if interasse_portali > 0 else 1
     y_portali = [i * interasse_portali for i in range(num_campate + 1)]
     
     if num_appoggi == 2:
@@ -346,7 +346,7 @@ def genera_modello_3d(dati):
         campate_controventi = [0, num_campate - 1]
 
     num_sub_falda = max(1, int(round(half_luce / 5.0)))
-    num_sub_parete = max(1, int(round(altezza_gronda / 4.5)))
+    num_sub_parete = max(1, int(round(altezza_gronda / 4.5))) if altezza_gronda > 0 else 1
     
     for idx in campate_controventi:
         if 0 <= idx < num_campate:
@@ -431,10 +431,8 @@ with st.sidebar:
         st.info("🤖 Modalità Ibrida con IA attiva (Richiede API Key)")
 
     st.markdown("---")
-    # Pulsante per azzerare tutto e resettare la sessione
     if st.button("🔄 Nuovo Progetto / Reset", use_container_width=True):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
+        st.session_state.clear()
         st.rerun()
 
 st.subheader("Analisi Capitolato / Appunti di Progetto e File (CAD o PDF)")
@@ -480,118 +478,122 @@ testo_commerciale = st.text_area(
     "Incolla qui le note del progetto o il capitolato:", 
     height=100,
     value="",
-    placeholder="Incolla qui note di progetto o capitolato..."
+    placeholder="Incolla qui note di progetto o capitolato...",
+    key="testo_commerciale"
 )
 
 st.markdown("### 📐 Dimensioni Geometriche dell'Edificio (Modificabili)")
 col_dim1, col_dim2, col_dim3, col_dim4, col_dim5 = st.columns(5)
 with col_dim1:
-    lunghezza_edificio_ui = st.number_input("Lunghezza Edificio (m)", min_value=5.0, value=25.0, step=1.0, format="%.1f")
+    lunghezza_edificio_ui = st.number_input("Lunghezza Edificio (m)", min_value=0.0, value=0.0, step=1.0, format="%.1f", key="lunghezza_edificio_ui")
 with col_dim2:
-    interasse_portali_ui = st.number_input("Interasse Portali (m)", min_value=2.0, value=5.0, step=0.5, format="%.2f")
+    interasse_portali_ui = st.number_input("Interasse Portali (m)", min_value=0.0, value=0.0, step=0.5, format="%.2f", key="interasse_portali_ui")
 with col_dim3:
-    luce_totale_ui = st.number_input("Luce Totale / Larghezza (m)", min_value=5.0, value=39.6, step=0.1, format="%.2f")
+    luce_totale_ui = st.number_input("Luce Totale / Larghezza (m)", min_value=0.0, value=0.0, step=0.1, format="%.2f", key="luce_totale_ui")
 with col_dim4:
-    altezza_gronda_ui = st.number_input("Altezza Gronda (m)", min_value=3.0, value=9.0, step=0.5, format="%.1f")
+    altezza_gronda_ui = st.number_input("Altezza Gronda (m)", min_value=0.0, value=0.0, step=0.5, format="%.1f", key="altezza_gronda_ui")
 with col_dim5:
-    altezza_colmo_ui = st.number_input("Altezza Colmo (m)", min_value=3.5, value=12.21, step=0.01, format="%.2f")
+    altezza_colmo_ui = st.number_input("Altezza Colmo (m)", min_value=0.0, value=0.0, step=0.01, format="%.2f", key="altezza_colmo_ui")
 
 st.markdown("### 🏛️ Configurazione Telaio e Travatura")
 col_g1, col_g2 = st.columns(2)
 with col_g1:
-    tipo_travatura = st.selectbox("Tipologia Travatura di Copertura", ["Bi-falda semplice", "Bi-falda con intradosso curvo", "Trave di falda giuntata in colmo"])
+    tipo_travatura = st.selectbox("Tipologia Travatura di Copertura", ["Bi-falda semplice", "Bi-falda con intradosso curvo", "Trave di falda giuntata in colmo"], key="tipo_travatura")
 with col_g2:
-    num_appoggi = st.selectbox("Numero di Appoggi del Telaio", [2, 3, 4], index=1, format_func=lambda x: f"{x} Appoggi ({'Campata Unica' if x==2 else f'Multi-campata con {x-2} pilastro/i interno/i'})")
+    num_appoggi = st.selectbox("Numero di Appoggi del Telaio", [2, 3, 4], index=1, format_func=lambda x: f"{x} Appoggi ({'Campata Unica' if x==2 else f'Multi-campata con {x-2} pilastro/i interno/i'})", key="num_appoggi")
 
 st.markdown("### ⚙️ Parametri Carichi di Copertura e Pannellature")
 col_c1, col_c2, col_c3 = st.columns(3)
 
 with col_c1:
-    tipo_isolante = st.selectbox("Tipologia Pannello Copertura", ["PIR / PUR", "Lana Minerale", "Lamiera Grecata Semplice"])
+    tipo_isolante = st.selectbox("Tipologia Pannello Copertura", ["PIR / PUR", "Lana Minerale", "Lamiera Grecata Semplice"], key="tipo_isolante")
     if tipo_isolante == "PIR / PUR":
-        spessore_pannello = st.selectbox("Spessore Pannello (mm)", [50, 60, 80, 100, 120])
+        spessore_pannello = st.selectbox("Spessore Pannello (mm)", [50, 60, 80, 100, 120], key="spessore_panni_pir")
     elif tipo_isolante == "Lana Minerale":
-        spessore_pannello = st.selectbox("Spessore Pannello (mm)", [100, 120, 150, 170])
+        spessore_pannello = st.selectbox("Spessore Pannello (mm)", [100, 120, 150, 170], key="spessore_panni_lana")
     else:
         spessore_pannello = 0
 
 with col_c2:
     st.write("")
     st.write("")
-    impianto_fv = st.checkbox("Impianto Fotovoltaico in Copertura (20 kg/mq)", value=False)
+    impianto_fv = st.checkbox("Impianto Fotovoltaico in Copertura (20 kg/mq)", value=False, key="impianto_fv")
 
 with col_c3:
-    carico_aggiuntivo = st.number_input("Carico aggiuntivo manuale (kN/mq)", min_value=0.0, value=0.0, step=0.05, format="%.2f")
+    carico_aggiuntivo = st.number_input("Carico aggiuntivo manuale (kN/mq)", min_value=0.0, value=0.0, step=0.05, format="%.2f", key="carico_aggiuntivo")
 
 st.markdown("### 🧱 Rivestimento Parete")
 col_p1, col_p2 = st.columns(2)
 with col_p1:
-    tipo_isolante_parete = st.selectbox("Tipologia Pannello Parete", ["PIR / PUR", "Lana di Roccia", "Lamiera Semplice", "Nessuno (Aperto)"])
+    tipo_isolante_parete = st.selectbox("Tipologia Pannello Parete", ["PIR / PUR", "Lana di Roccia", "Lamiera Semplice", "Nessuno (Aperto)"], key="tipo_isolante_parete")
 with col_p2:
     if tipo_isolante_parete == "PIR / PUR":
-        spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [50, 60, 80, 100, 120])
+        spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [50, 60, 80, 100, 120], key="spessore_parete_pir")
     elif tipo_isolante_parete == "Lana di Roccia":
-        spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [80, 100, 120, 150])
+        spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [80, 100, 120, 150], key="spessore_parete_lana")
     else:
         spessore_pannello_parete = 0
 
 if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
-    num_campate_calc = max(1, int(round(lunghezza_edificio_ui / interasse_portali_ui)))
-    impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
-    
-    dati_base = {
-        'lunghezza_edificio': lunghezza_edificio_ui,
-        'interasse_portali': interasse_portali_ui,
-        'luce_totale': luce_totale_ui,
-        'altezza_gronda': altezza_gronda_ui,
-        'altezza_colmo': altezza_colmo_ui,
-        'num_campate': num_campate_calc,
-        'tipo_travatura': tipo_travatura,
-        'num_appoggi': num_appoggi,
-        'tipo_isolante': tipo_isolante,
-        'spessore_pannello': f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice",
-        'tipo_isolante_parete': tipo_isolante_parete,
-        'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
-        'impianto_fv_desc': impianto_fv_desc,
-        'carico_aggiuntivo': carico_aggiuntivo,
-        'qsk': 1.5
-    }
-
-    if modalita_deterministica:
-        with st.spinner('Esecuzione motore analitico deterministico NTC 2018...'):
-            dati = esegui_calcolo_deterministico(dati_base)
-            dati.update(dati_base)
-            distinta_elementi = calcola_distinta_elementi(dati)
-            dati['distinta'] = distinta_elementi
-            st.session_state['dati_ultimi'] = dati
-            st.success("Modello deterministico calcolato con successo!")
+    if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or altezza_colmo_ui <= 0:
+        st.warning("⚠️ Inserisci tutte le dimensioni geometriche con valori superiori a zero prima di eseguire il calcolo.")
     else:
-        if not api_key:
-            st.error("Inserisci prima l'API Key di Google nella barra laterale per usare la modalità IA!")
+        num_campate_calc = max(1, int(round(lunghezza_edificio_ui / interasse_portali_ui)))
+        impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
+        
+        dati_base = {
+            'lunghezza_edificio': lunghezza_edificio_ui,
+            'interasse_portali': interasse_portali_ui,
+            'luce_totale': luce_totale_ui,
+            'altezza_gronda': altezza_gronda_ui,
+            'altezza_colmo': altezza_colmo_ui,
+            'num_campate': num_campate_calc,
+            'tipo_travatura': tipo_travatura,
+            'num_appoggi': num_appoggi,
+            'tipo_isolante': tipo_isolante,
+            'spessore_pannello': f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice",
+            'tipo_isolante_parete': tipo_isolante_parete,
+            'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
+            'impianto_fv_desc': impianto_fv_desc,
+            'carico_aggiuntivo': carico_aggiuntivo,
+            'qsk': 1.5
+        }
+
+        if modalita_deterministica:
+            with st.spinner('Esecuzione motore analitico deterministico NTC 2018...'):
+                dati = esegui_calcolo_deterministico(dati_base)
+                dati.update(dati_base)
+                distinta_elementi = calcola_distinta_elementi(dati)
+                dati['distinta'] = distinta_elementi
+                st.session_state['dati_ultimi'] = dati
+                st.success("Modello deterministico calcolato con successo!")
         else:
-            dati_config_str = f"""
-            --- CONFIGURAZIONE GEOMETRICA E CARICHI SCELTI ---
-            - Lunghezza Edificio: {lunghezza_edificio_ui} m
-            - Interasse Portali: {interasse_portali_ui} m (Numero Campate: {num_campate_calc})
-            - Luce Totale: {luce_totale_ui} m
-            - Altezza Gronda: {altezza_gronda_ui} m
-            - Altezza Colmo: {altezza_colmo_ui} m
-            - Tipologia Travatura: {tipo_travatura}
-            - Numero Appoggi Telaio: {num_appoggi} appoggi
-            - Tipologia Pannello Copertura: {tipo_isolante} ({spessore_pannello} mm)
-            - Impianto Fotovoltaico: {impianto_fv_desc}
-            - Carico Permanente Aggiuntivo Manuale: {carico_aggiuntivo} kN/mq
-            - Tipologia Pannello Parete: {tipo_isolante_parete} ({spessore_pannello_parete} mm)
-            """
-            testo_totale_analisi = testo_commerciale + "\n\n" + dati_config_str + "\n\n--- NOTE DAL FILE ALLEGATO ---\n" + testo_estratto_file
-            
-            genai.configure(api_key=api_key)
-            try:
-                model = genai.GenerativeModel(
-                    model_name='gemini-3.6-flash',
-                    generation_config={"response_mime_type": "application/json", "temperature": 0.0}
-                )
-                prompt = f"""
+            if not api_key:
+                st.error("Inserisci prima l'API Key di Google nella barra laterale per usare la modalità IA!")
+            else:
+                dati_config_str = f"""
+                --- CONFIGURAZIONE GEOMETRICA E CARICHI SCELTI ---
+                - Lunghezza Edificio: {lunghezza_edificio_ui} m
+                - Interasse Portali: {interasse_portali_ui} m (Numero Campate: {num_campate_calc})
+                - Luce Totale: {luce_totale_ui} m
+                - Altezza Gronda: {altezza_gronda_ui} m
+                - Altezza Colmo: {altezza_colmo_ui} m
+                - Tipologia Travatura: {tipo_travatura}
+                - Numero Appoggi Telaio: {num_appoggi} appoggi
+                - Tipologia Pannello Copertura: {tipo_isolante} ({spessore_pannello} mm)
+                - Impianto Fotovoltaico: {impianto_fv_desc}
+                - Carico Permanente Aggiuntivo Manuale: {carico_aggiuntivo} kN/mq
+                - Tipologia Pannello Parete: {tipo_isolante_parete} ({spessore_pannello_parete} mm)
+                """
+                testo_totale_analisi = testo_commerciale + "\n\n" + dati_config_str + "\n\n--- NOTE DAL FILE ALLEGATO ---\n" + testo_estratto_file
+                
+                genai.configure(api_key=api_key)
+                try:
+                    model = genai.GenerativeModel(
+                        model_name='gemini-3.6-flash',
+                        generation_config={"response_mime_type": "application/json", "temperature": 0.0}
+                    )
+                    prompt = f"""
 Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018. Analizza il testo tecnico e restituisci un oggetto JSON valido (senza markdown) con queste chiavi esatte:
 - "luogo": stringa
 - "qsk": float
@@ -627,24 +629,24 @@ Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NT
 
 Testo da analizzare:
 "{testo_totale_analisi}"
-                """
-                with st.spinner('Elaborazione calcoli strutturali con IA...'):
-                    risposta_ia = model.generate_content(prompt)
-                    testo_risposta = risposta_ia.text.strip()
-                    if testo_risposta.startswith("```json"): testo_risposta = testo_risposta[7:]
-                    if testo_risposta.startswith("```"): testo_risposta = testo_risposta[3:]
-                    if testo_risposta.endswith("```"): testo_risposta = testo_risposta[:-3]
-                    
-                    dati = json.loads(testo_risposta.strip())
-                    dati.update(dati_base)
-                    risultati_strutturali = esegui_calcolo_deterministico(dati)
-                    dati.update(risultati_strutturali)
-                    distinta_elementi = calcola_distinta_elementi(dati)
-                    dati['distinta'] = distinta_elementi
-                    st.session_state['dati_ultimi'] = dati
-                    st.success("Modello ibrido IA calcolato con successo!")
-            except Exception as e:
-                st.error(f"Errore durante l'elaborazione con IA: {e}")
+                    """
+                    with st.spinner('Elaborazione calcoli strutturali con IA...'):
+                        risposta_ia = model.generate_content(prompt)
+                        testo_risposta = risposta_ia.text.strip()
+                        if testo_risposta.startswith("```json"): testo_risposta = testo_risposta[7:]
+                        if testo_risposta.startswith("```"): testo_risposta = testo_risposta[3:]
+                        if testo_risposta.endswith("```"): testo_risposta = testo_risposta[:-3]
+                        
+                        dati = json.loads(testo_risposta.strip())
+                        dati.update(dati_base)
+                        risultati_strutturali = esegui_calcolo_deterministico(dati)
+                        dati.update(risultati_strutturali)
+                        distinta_elementi = calcola_distinta_elementi(dati)
+                        dati['distinta'] = distinta_elementi
+                        st.session_state['dati_ultimi'] = dati
+                        st.success("Modello ibrido IA calcolato con successo!")
+                except Exception as e:
+                    st.error(f"Errore durante l'elaborazione con IA: {e}")
 
 if 'dati_ultimi' in st.session_state:
     dati = st.session_state['dati_ultimi']
