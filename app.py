@@ -32,17 +32,23 @@ def genera_word_report(dati):
     doc.add_paragraph(f"Sezione Consigliata: {dati.get('sezione_arcarecci', 'N.D.')}")
     doc.add_paragraph(f"Verifica: {dati.get('verifica_arcarecci', 'N.D.')}")
     
-    doc.add_heading('3. Travi Principali / Portali (Confronto 3 Materiali)', level=1)
+    doc.add_heading('3. Baraccatura di Parete (Supporto Rivestimento)', level=1)
+    doc.add_paragraph(f"Pannello Parete: {dati.get('tipo_isolante_parete', 'N.D.')} - Spessore: {dati.get('spessore_pannello_parete', 'N.D.')}")
+    doc.add_paragraph(f"Legno Lamellare: {dati.get('baraccatura_legno_lamellare', 'N.D.')}")
+    doc.add_paragraph(f"Legno Massiccio: {dati.get('baraccatura_legno_massiccio', 'N.D.')}")
+    doc.add_paragraph(f"Acciaio: {dati.get('baraccatura_acciaio', 'N.D.')}")
+
+    doc.add_heading('4. Travi Principali / Portali (Confronto 3 Materiali)', level=1)
     doc.add_paragraph(f"Legno Lamellare: {dati.get('travi_legno', 'N.D.')}")
     doc.add_paragraph(f"Acciaio: {dati.get('travi_acciaio', 'N.D.')}")
     doc.add_paragraph(f"C.a.p.: {dati.get('travi_cap', 'N.D.')}")
     
-    doc.add_heading('4. Pilastri (Perimetrali e Intermedi)', level=1)
+    doc.add_heading('5. Pilastri (Perimetrali e Intermedi)', level=1)
     doc.add_paragraph(f"Legno Lamellare: {dati.get('pilastri_legno', 'N.D.')}")
     doc.add_paragraph(f"Acciaio: {dati.get('pilastri_acciaio', 'N.D.')}")
     doc.add_paragraph(f"C.a.p.: {dati.get('pilastri_cap', 'N.D.')}")
     
-    doc.add_heading('5. Stabilizzazione e Controventi', level=1)
+    doc.add_heading('6. Stabilizzazione e Controventi', level=1)
     doc.add_paragraph(f"Copertura (Posizione calcolata IA): {dati.get('controventi_copertura_pos', 'N.D.')}")
     doc.add_paragraph(f"  - Opzione Legno: {dati.get('controventi_copertura_legno', 'N.D.')}")
     doc.add_paragraph(f"  - Opzione Acciaio: {dati.get('controventi_copertura_acciaio', 'N.D.')}")
@@ -50,19 +56,19 @@ def genera_word_report(dati):
     doc.add_paragraph(f"  - Opzione Legno: {dati.get('controventi_parete_legno', 'N.D.')}")
     doc.add_paragraph(f"  - Opzione Acciaio: {dati.get('controventi_parete_acciaio', 'N.D.')}")
     
-    doc.add_heading('6. Dettaglio Connessioni, Nodi e Giunti in Colmo', level=1)
+    doc.add_heading('7. Dettaglio Connessioni, Nodi e Giunti in Colmo', level=1)
     doc.add_paragraph(f"Connessione Trave/Pilastro: {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
     doc.add_paragraph(f"  - Elementi: {dati.get('conn_trave_pilastro_elementi', 'N.D.')} | Peso: {dati.get('conn_trave_pilastro_kg', 'N.D.')}")
     doc.add_paragraph(f"Connessione Pilastro/Fondazione: {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
     doc.add_paragraph(f"  - Ancoraggi: {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')} | Peso: {dati.get('conn_pilastro_fondazione_kg', 'N.D.')}")
     doc.add_paragraph(f"Giunto in Colmo (se previsto): {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
     
-    doc.add_heading('7. Protezione Antincendio', level=1)
+    doc.add_heading('8. Protezione Antincendio', level=1)
     doc.add_paragraph(f"Classe Resistenza al Fuoco: {dati.get('classe_resistenza_fuoco', 'N.D.')}")
     doc.add_paragraph(f"Superficie Acciaio da Trattare: {dati.get('mq_intumescente', 'N.D.')}")
     doc.add_paragraph(f"Ciclo: {dati.get('dettaglio_verniciatura', 'N.D.')}")
     
-    doc.add_heading('8. Note Tecniche', level=1)
+    doc.add_heading('9. Note Tecniche', level=1)
     doc.add_paragraph(dati.get('note_tecniche', 'N.D.'))
     
     file_stream = io.BytesIO()
@@ -338,6 +344,18 @@ with col_c2:
 with col_c3:
     carico_aggiuntivo = st.number_input("Carico aggiuntivo manuale (kN/mq)", min_value=0.0, value=0.0, step=0.05, format="%.2f")
 
+st.markdown("### 🧱 Rivestimento Parete")
+col_p1, col_p2 = st.columns(2)
+with col_p1:
+    tipo_isolante_parete = st.selectbox("Tipologia Pannello Parete", ["PIR / PUR", "Lana di Roccia", "Lamiera Semplice", "Nessuno (Aperto)"])
+with col_p2:
+    if tipo_isolante_parete == "PIR / PUR":
+        spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [50, 60, 80, 100, 120])
+    elif tipo_isolante_parete == "Lana di Roccia":
+        spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [80, 100, 120, 150])
+    else:
+        spessore_pannello_parete = 0
+
 if st.button("Esegui Dimensionamento Dinamico e Modello 3D", type="primary"):
     if not api_key:
         st.error("Inserisci prima l'API Key nella barra laterale!")
@@ -353,10 +371,10 @@ if st.button("Esegui Dimensionamento Dinamico e Modello 3D", type="primary"):
         - Altezza Colmo: {altezza_colmo_ui} m
         - Tipologia Travatura: {tipo_travatura}
         - Numero Appoggi Telaio: {num_appoggi} appoggi
-        - Tipologia Pannello: {tipo_isolante}
-        - Spessore Pannello: {spessore_pannello} mm
+        - Tipologia Pannello Copertura: {tipo_isolante} ({spessore_pannello} mm)
         - Impianto Fotovoltaico: {impianto_fv_desc}
         - Carico Permanente Aggiuntivo Manuale: {carico_aggiuntivo} kN/mq
+        - Tipologia Pannello Parete: {tipo_isolante_parete} ({spessore_pannello_parete} mm)
         """
         
         testo_totale_analisi = testo_commerciale + "\n\n" + dati_config_str + "\n\n--- NOTE DAL FILE ALLEGATO ---\n" + testo_estratto_file
@@ -372,11 +390,11 @@ if st.button("Esegui Dimensionamento Dinamico e Modello 3D", type="primary"):
                 )
                 
                 prompt = f"""
-Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018 (Neve, Vento, Sisma, carichi di copertura, schemi statici a 2/3/4 appoggi, travi a intradosso curvo o giuntate in colmo) e nodi esecutivi.
+Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018 (Neve, Vento, Sisma, carichi di copertura e facciata, schemi statici) e nodi esecutivi.
 Analizza il testo tecnico fornito e calcola un predimensionamento strutturale conservativo e rigoroso.
 
-Devi inoltre decidere in quale campata/e posizionare i controventi di falda e di parete in base al calcolo strutturale, alla lunghezza totale ({lunghezza_edificio_ui}m) e all'interasse ({interasse_portali_ui}m, totale campate: {num_campate_calc}).
-Restituisci la lista degli indici 0-based delle campate nella chiave "campate_controventi_indici".
+Includi nel calcolo il dimensionamento della "baraccatura di parete" (orditura secondaria a supporto dei pannelli verticali). Tieni conto dell'azione del vento sulle facciate (NTC 2018) e del peso proprio del pannello scelto in base alla tipologia e allo spessore. 
+Devi inoltre decidere in quale campata/e posizionare i controventi di falda e di parete.
 
 Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markdown di alcun tipo, inizia con '{' e finisci con '}') con queste esatte chiavi:
 - "luogo": stringa
@@ -392,6 +410,9 @@ Restituisci ESATTAMENTE e unicamente un oggetto JSON valido (senza blocchi markd
 - "interasse_arcarecci": float
 - "sezione_arcarecci": stringa
 - "verifica_arcarecci": stringa
+- "baraccatura_legno_lamellare": stringa
+- "baraccatura_legno_massiccio": stringa
+- "baraccatura_acciaio": stringa
 - "travi_legno": stringa
 - "travi_acciaio": stringa
 - "travi_cap": stringa
@@ -442,6 +463,8 @@ Testo da analizzare:
                     dati['num_appoggi'] = num_appoggi
                     dati['tipo_isolante'] = tipo_isolante
                     dati['spessore_pannello'] = f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice"
+                    dati['tipo_isolante_parete'] = tipo_isolante_parete
+                    dati['spessore_pannello_parete'] = f"{spessore_pannello_parete} mm" if tipo_isolante_parete != "Lamiera Semplice" and tipo_isolante_parete != "Nessuno (Aperto)" else tipo_isolante_parete
                     dati['impianto_fv_desc'] = impianto_fv_desc
                     dati['carico_aggiuntivo'] = carico_aggiuntivo
                     
@@ -496,7 +519,21 @@ if 'dati_ultimi' in st.session_state:
     st.info(f"**Passo Arcarecci:** {dati.get('interasse_arcarecci', 1.5)} m | **Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')} | **Stato:** {dati.get('verifica_arcarecci', 'Verificato')}")
     
     st.markdown("---")
-    st.markdown("### 📐 3. Travi Principali / Portali (Confronto Tecnologico)")
+    st.markdown("### 🧱 3. Baraccatura di Parete (Supporto Rivestimento)")
+    st.write(f"**Pannello Facciata:** {dati.get('tipo_isolante_parete', 'N.D.')} ({dati.get('spessore_pannello_parete', 'N.D.')})")
+    col_b1, col_b2, col_b3 = st.columns(3)
+    with col_b1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.success(dati.get('baraccatura_legno_lamellare', 'N.D.'))
+    with col_b2:
+        st.markdown("#### 🪵 Legno Massiccio")
+        st.success(dati.get('baraccatura_legno_massiccio', 'N.D.'))
+    with col_b3:
+        st.markdown("#### ⚙️ Acciaio")
+        st.warning(dati.get('baraccatura_acciaio', 'N.D.'))
+
+    st.markdown("---")
+    st.markdown("### 📐 4. Travi Principali / Portali (Confronto Tecnologico)")
     col_t1, col_t2, col_t3 = st.columns(3)
     with col_t1:
         st.markdown("#### 🌲 Legno Lamellare")
@@ -509,7 +546,7 @@ if 'dati_ultimi' in st.session_state:
         st.error(dati.get('travi_cap', 'N.D.'))
     
     st.markdown("---")
-    st.markdown("### 🏛️ 4. Pilastri (Perimetrali e Intermedi)")
+    st.markdown("### 🏛️ 5. Pilastri (Perimetrali e Intermedi)")
     col_p1, col_p2, col_p3 = st.columns(3)
     with col_p1:
         st.markdown("#### 🌲 Legno Lamellare")
@@ -522,7 +559,7 @@ if 'dati_ultimi' in st.session_state:
         st.error(dati.get('pilastri_cap', 'N.D.'))
     
     st.markdown("---")
-    st.markdown("### 🔗 5. Stabilizzazione e Controventi (Azioni Orizzontali)")
+    st.markdown("### 🔗 6. Stabilizzazione e Controventi (Azioni Orizzontali)")
     col_cv1, col_cv2 = st.columns(2)
     with col_cv1:
         st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
@@ -530,13 +567,13 @@ if 'dati_ultimi' in st.session_state:
         st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno', 'N.D.')}")
         st.info(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_copertura_acciaio', 'N.D.')}")
     with col_cv2:
-        st.markdown("#### 🧱 Controventi di Parete (Baraccatura)")
+        st.markdown("#### 🧱 Controventi di Parete (Controventatura)")
         st.write(f"📍 **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
         st.warning(f"🌲 **Opzione Legno:** {dati.get('controventi_parete_legno', 'N.D.')}")
         st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
     
     st.markdown("---")
-    st.markdown("### 🔩 6. Dimensionamento Dettagliato Connessioni, Nodi e Giunto in Colmo")
+    st.markdown("### 🔩 7. Dimensionamento Dettagliato Connessioni, Nodi e Giunto in Colmo")
     col_n1, col_n2 = st.columns(2)
     with col_n1:
         st.markdown("#### 🔗 Connessione Pilastro / Trave di Copertura")
@@ -553,7 +590,7 @@ if 'dati_ultimi' in st.session_state:
         st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
     
     st.markdown("---")
-    st.markdown("### 🔥 7. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
+    st.markdown("### 🔥 8. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
     col_f1, col_f2 = st.columns(2)
     with col_f1:
         st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
@@ -562,5 +599,5 @@ if 'dati_ultimi' in st.session_state:
     st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
     
     st.markdown("---")
-    st.markdown("### 📝 8. Relazione e Note Tecniche")
+    st.markdown("### 📝 9. Relazione e Note Tecniche")
     st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
