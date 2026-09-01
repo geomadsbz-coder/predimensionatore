@@ -17,8 +17,37 @@ def esegui_calcolo_deterministico(dati_geo):
     h_gronda = dati_geo['altezza_gronda']
     h_colmo = dati_geo['altezza_colmo']
     num_appoggi = dati_geo['num_appoggi']
-    qsk = dati_geo.get('qsk', 1.5)
     
+    provincia = dati_geo.get('provincia', 'Bolzano')
+    altitudine = dati_geo.get('altitudine', 250.0)
+    
+    # Calcolo deterministico Neve qsk (NTC 2018 in base a Provincia/Zona e Altitudine)
+    # Zone Alpine / Montane (Zona I): Bolzano, Trento, Belluno, Sondrio, Cuneo, Aosta, Udine
+    provincie_zona_1 = ['Bolzano', 'Trento', 'Belluno', 'Sondrio', 'Cuneo', 'Aosta', 'Udine']
+    provincie_zona_3 = ['Roma', 'Napoli', 'Palermo', 'Catania', 'Bari', 'Cagliari', 'Lecce', 'Taranto', 'Reggio Calabria']
+    
+    if provincia in provincie_zona_1:
+        # Zona I (Alpina): qsk = 1.39 * [1 + (a/728)^2] (kPa)
+        qsk = round(1.39 * (1.0 + (altitudine / 728.0) ** 2), 2)
+        zona_neve = "Zona I (Alpina)"
+        zona_vento = "Zona 1 (vb = 25 m/s)"
+        pressione_vento = round(0.50 * (1.0 + altitudine/1000.0), 2)
+        zona_sismica = "Zona 3 / 4 (Verifica specifica locale)"
+    elif provincia in provincie_zona_3:
+        # Zona III
+        qsk = round(0.50 * (1.0 + (altitudine / 833.0) ** 2), 2)
+        zona_neve = "Zona III (Meridionale / Costiera)"
+        zona_vento = "Zona 2 o 3 (Costiera/Sud)"
+        pressione_vento = 0.58
+        zona_sismica = "Zona 1 o 2 (Alta sismicità)"
+    else:
+        # Zona II (Pianura Padana / Centro Italia standard: es. Milano, Verona, Vicenza, Torino, Brescia, Bergamo, Treviso, Padova)
+        qsk = round(0.85 * (1.0 + (altitudine / 778.0) ** 2), 2)
+        zona_neve = "Zona II (Padana / Interna)"
+        zona_vento = "Zona 3 (vb = 27 m/s - Interna)"
+        pressione_vento = round(0.48 * (1.0 + altitudine/1200.0), 2)
+        zona_sismica = "Zona 2 / 3 (Media/Bassa sismicità)"
+
     g1 = 0.15  
     g2 = 0.25  
     if "Presente" in dati_geo.get('impianto_fv_desc', ''):
@@ -52,9 +81,6 @@ def esegui_calcolo_deterministico(dati_geo):
 
     profilo_cap = f"Trave a T rovescia precompressa altezza {max(80, int(h_legno_cm*1.2))} cm"
 
-    q_vento_parete = 1.2 * interasse * 0.85 
-    w_bar_req = (q_vento_parete * (h_gronda**2)) / 8.0
-    
     n_bulloni_nodo = max(4, int(v_ed / 35.0) * 2)
     peso_conn_kg = round(n_bulloni_nodo * 4.5 + 15.0, 1)
     n_ancoraggi = max(4, int(v_ed / 40.0) * 2)
@@ -63,11 +89,11 @@ def esegui_calcolo_deterministico(dati_geo):
     mq_acciaio = round((luce + h_gronda * 2) * (dati_geo['num_campate'] + 1) * 0.6, 1)
 
     risultati_deterministici = {
-        "luogo": "Località Standard (Verifica Automatica NTC 2018)",
+        "luogo": f"{provincia} ({altitudine} m s.l.m.) - Neve: {zona_neve}",
         "qsk": qsk,
-        "zona_vento": "Zona 3 (Pressione di riferimento q_b = 250 N/mq)",
-        "pressione_vento": "0.85 kN/mq (Classe II di Rugosità)",
-        "zona_sismica": "Zona 3 (ag = 0.15g)",
+        "zona_vento": zona_vento,
+        "pressione_vento": f"{pressione_vento} kN/mq",
+        "zona_sismica": zona_sismica,
         "classe_uso": "Classe II (Edifici industriali ordinari)",
         "fattore_struttura_q": "q = 2.0 (Struttura intelaiata)",
         "m_ed": round(m_ed, 1),
@@ -100,7 +126,7 @@ def esegui_calcolo_deterministico(dati_geo):
         "classe_resistenza_fuoco": "R 60 (Conforme ai requisiti antincendio attività industriali)",
         "mq_intumescente": f"{mq_acciaio} mq",
         "dettaglio_verniciatura": "Primer epossidico anticorrosivo + Vernice intumescente a spessore testata per 60 min",
-        "note_tecniche": "Predimensionamento elaborato interamente con motore analitico deterministico in accordo alle NTC 2018. Valido per studi di fattibilità e computo metrico estimativo."
+        "note_tecniche": f"Predimensionamento deterministico NTC 2018 basato su località: {provincia}, Altitudine: {altitudine}m (Neve qsk = {qsk} kN/mq)."
     }
     return risultati_deterministici
 
@@ -170,7 +196,7 @@ def genera_word_report(dati, distinta):
     doc.add_heading('Relazione Tecnica di Predimensionamento e Calcolo (NTC 2018)', 0)
     
     doc.add_heading('1. Parametri Geometrici, Climatici, Sismici e di Configurazione', level=1)
-    doc.add_paragraph(f"Località: {dati.get('luogo', 'Bolzano')}")
+    doc.add_paragraph(f"Località / Neve: {dati.get('luogo', 'Bolzano')}")
     doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')} | Classe d'Uso: {dati.get('classe_uso', 'N.D.')} | Fattore q: {dati.get('fattore_struttura_q', 'N.D.')}")
@@ -482,18 +508,34 @@ testo_commerciale = st.text_area(
     key="testo_commerciale"
 )
 
+st.markdown("### 📍 Località e Parametri Climatici (NTC 2018)")
+col_loc1, col_loc2 = st.columns(2)
+with col_loc1:
+    provincia_ui = st.selectbox(
+        "Provincia / Area Principale", 
+        ["Bolzano", "Trento", "Belluno", "Verona", "Vicenza", "Milano", "Torino", "Brescia", "Bergamo", "Udine", "Treviso", "Padova", "Roma", "Napoli", "Altra"], 
+        key="provincia_ui"
+    )
+with col_loc2:
+    altitudine_ui = st.number_input(
+        "Altitudine s.l.m. (m)", 
+        min_value=0.0, max_value=3000.0, value=250.0, step=50.0, format="%.1f", 
+        key="altitudine_ui",
+        help="Altitudine del sito di costruzione per il calcolo automatico del carico neve qsk (NTC 2018)."
+    )
+
 st.markdown("### 📐 Dimensioni Geometriche dell'Edificio (Modificabili)")
 col_dim1, col_dim2, col_dim3, col_dim4, col_dim5 = st.columns(5)
 with col_dim1:
-    lunghezza_edificio_ui = st.number_input("Lunghezza Edificio (m)", min_value=0.0, value=0.0, step=1.0, format="%.1f", key="lunghezza_edificio_ui")
+    lunghezza_edificio_ui = st.number_input("Lunghezza Edificio (m)", min_value=0.0, value=25.0, step=1.0, format="%.1f", key="lunghezza_edificio_ui")
 with col_dim2:
-    interasse_portali_ui = st.number_input("Interasse Portali (m)", min_value=0.0, value=0.0, step=0.5, format="%.2f", key="interasse_portali_ui")
+    interasse_portali_ui = st.number_input("Interasse Portali (m)", min_value=0.0, value=5.0, step=0.5, format="%.2f", key="interasse_portali_ui")
 with col_dim3:
-    luce_totale_ui = st.number_input("Luce Totale / Larghezza (m)", min_value=0.0, value=0.0, step=0.1, format="%.2f", key="luce_totale_ui")
+    luce_totale_ui = st.number_input("Luce Totale / Larghezza (m)", min_value=0.0, value=39.6, step=0.1, format="%.2f", key="luce_totale_ui")
 with col_dim4:
-    altezza_gronda_ui = st.number_input("Altezza Gronda (m)", min_value=0.0, value=0.0, step=0.5, format="%.1f", key="altezza_gronda_ui")
+    altezza_gronda_ui = st.number_input("Altezza Gronda (m)", min_value=0.0, value=9.0, step=0.5, format="%.1f", key="altezza_gronda_ui")
 with col_dim5:
-    altezza_colmo_ui = st.number_input("Altezza Colmo (m)", min_value=0.0, value=0.0, step=0.01, format="%.2f", key="altezza_colmo_ui")
+    altezza_colmo_ui = st.number_input("Altezza Colmo (m)", min_value=0.0, value=12.21, step=0.01, format="%.2f", key="altezza_colmo_ui")
 
 st.markdown("### 🏛️ Configurazione Telaio e Travatura")
 col_g1, col_g2 = st.columns(2)
@@ -556,11 +598,12 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
             'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
             'impianto_fv_desc': impianto_fv_desc,
             'carico_aggiuntivo': carico_aggiuntivo,
-            'qsk': 1.5
+            'provincia': provincia_ui,
+            'altitudine': altitudine_ui
         }
 
         if modalita_deterministica:
-            with st.spinner('Esecuzione motore analitico deterministico NTC 2018...'):
+            with st.spinner('Esecuzione motore analitico deterministico NTC 2018 (Neve, Vento, Sisma)...'):
                 dati = esegui_calcolo_deterministico(dati_base)
                 dati.update(dati_base)
                 distinta_elementi = calcola_distinta_elementi(dati)
@@ -573,6 +616,7 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
             else:
                 dati_config_str = f"""
                 --- CONFIGURAZIONE GEOMETRICA E CARICHI SCELTI ---
+                - Provincia: {provincia_ui} | Altitudine: {altitudine_ui} m
                 - Lunghezza Edificio: {lunghezza_edificio_ui} m
                 - Interasse Portali: {interasse_portali_ui} m (Numero Campate: {num_campate_calc})
                 - Luce Totale: {luce_totale_ui} m
@@ -688,15 +732,15 @@ if 'dati_ultimi' in st.session_state:
     st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Località", dati.get("luogo", "Bolzano"))
-    c2.metric("Lunghezza Edificio", f"{dati.get('lunghezza_edificio')} m")
-    c3.metric("N. Campate / Telai", f"{dati.get('num_campate')} Camp. / {dati.get('num_campate')+1} Telai")
-    c4.metric("Interasse Portali", f"{dati.get('interasse_portali')} m")
+    c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
+    c3.metric("Zona Vento", dati.get("zona_vento", "N.D."))
+    c4.metric("Pressione Vento", dati.get("pressione_vento", "N.D."))
     
     c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Luce Totale", f"{dati.get('luce_totale')} m")
-    c6.metric("Schema Telaio", f"{dati.get('num_appoggi')} Appoggi")
-    c7.metric("Travatura", dati.get("tipo_travatura", "Bi-falda semplice"))
-    c8.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
+    c5.metric("Azione Sismica", dati.get("zona_sismica", "N.D."))
+    c6.metric("Luce Totale", f"{dati.get('luce_totale')} m")
+    c7.metric("Schema Telaio", f"{dati.get('num_appoggi')} Appoggi")
+    c8.metric("Travatura", dati.get("tipo_travatura", "Bi-falda semplice"))
     
     st.info(f"🏗️ **Copertura configurata:** Pannello {dati.get('tipo_isolante')} ({dati.get('spessore_pannello')}) | **Impianto FV:** {dati.get('impianto_fv_desc')} | **Carico Extra:** {dati.get('carico_aggiuntivo', 0.0)} kN/mq")
     
