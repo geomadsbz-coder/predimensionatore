@@ -19,9 +19,8 @@ def esegui_calcolo_deterministico(dati_geo):
     num_appoggi = dati_geo['num_appoggi']
     qsk = dati_geo.get('qsk', 1.5)
     
-    # Valutazione carichi permanenti e neve
-    g1 = 0.15  # Struttura + copertura base
-    g2 = 0.25  # Impianti / controventi / finiture
+    g1 = 0.15  
+    g2 = 0.25  
     if "Presente" in dati_geo.get('impianto_fv_desc', ''):
         g2 += 0.20
     g2 += dati_geo.get('carico_aggiuntivo', 0.0)
@@ -38,7 +37,6 @@ def esegui_calcolo_deterministico(dati_geo):
         m_ed = (q_ed * (luce_campata ** 2)) / 8.0
         v_ed = (q_ed * luce_campata) / 2.0
 
-    # Dimensionamento Travi e Pilastri Principali
     b_legno = 0.20 
     w_req_cm3 = (m_ed * 1e6) / (14.5 * 1e3)
     h_legno_cm = max(45, int((6 * w_req_cm3 / (b_legno * 100)) ** 0.5 * 10))
@@ -54,18 +52,14 @@ def esegui_calcolo_deterministico(dati_geo):
 
     profilo_cap = f"Trave a T rovescia precompressa altezza {max(80, int(h_legno_cm*1.2))} cm"
 
-    # Dimensionamento Baraccatura di Parete in base al carico vento e peso pannello
-    peso_pannello_parete = 0.12 if "Lana" in dati_geo.get('tipo_isolante_parete', '') else 0.10
-    q_vento_parete = 1.2 * interasse * 0.85 # Azione caratteristica vento parete NTC2018
+    q_vento_parete = 1.2 * interasse * 0.85 
     w_bar_req = (q_vento_parete * (h_gronda**2)) / 8.0
     
-    # Connessioni e Nodi deterministici basati sulle sollecitazioni
     n_bulloni_nodo = max(4, int(v_ed / 35.0) * 2)
     peso_conn_kg = round(n_bulloni_nodo * 4.5 + 15.0, 1)
     n_ancoraggi = max(4, int(v_ed / 40.0) * 2)
     peso_anc_kg = round(n_ancoraggi * 3.5 + 20.0, 1)
 
-    # Superficie acciaio intumescente stimata sullo sviluppo dei profili
     mq_acciaio = round((luce + h_gronda * 2) * (dati_geo['num_campate'] + 1) * 0.6, 1)
 
     risultati_deterministici = {
@@ -435,6 +429,13 @@ with st.sidebar:
         st.success("🟢 Motore Matematico Locale Attivo (Risultati 100% stabili e ripetibili)")
     else:
         st.info("🤖 Modalità Ibrida con IA attiva (Richiede API Key)")
+
+    st.markdown("---")
+    # Pulsante per azzerare tutto e resettare la sessione
+    if st.button("🔄 Nuovo Progetto / Reset", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
 
 st.subheader("Analisi Capitolato / Appunti di Progetto e File (CAD o PDF)")
 
