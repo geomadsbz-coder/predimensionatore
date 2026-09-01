@@ -604,7 +604,8 @@ Testo da analizzare:
 
 if 'dati_ultimi' in st.session_state:
     dati = st.session_state['dati_ultimi']
-    distinta = dati['distinta']
+    # Recupera la distinta o la calcola al volo se stai caricando vecchi dati in cache
+    distinta = dati.get('distinta', calcola_distinta_elementi(dati))
     st.markdown("---")
     
     col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
