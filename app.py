@@ -142,11 +142,13 @@ def esegui_calcolo_deterministico(dati_geo):
         m_ed = (q_ed * (luce_campata ** 2)) / 8.0
         v_ed = (q_ed * luce_campata) / 2.0
 
+    # Dimensionamento Legno Lamellare GL24h (arrotondato ai 4 cm commerciali, senza decimali)
     b_legno_cm = 20 
     w_req_cm3 = (m_ed * 1e6) / 14500.0  
     h_legno_cm = int((6 * w_req_cm3 / b_legno_cm) ** 0.5)
     h_legno_cm = max(44, ((h_legno_cm + 3) // 4) * 4) 
 
+    # Dimensionamento Acciaio S355JR
     w_el_req_cm3 = (m_ed * 100.0) / 33.8 
     if w_el_req_cm3 > 3500:
         profilo_acciaio = "IPE 600 / HEB 500"
@@ -161,7 +163,11 @@ def esegui_calcolo_deterministico(dati_geo):
         profilo_acciaio = "IPE 330 / HEA 240"
         pilastro_acciaio = "HEB 200"
 
-# --- FATTORE GEOMETRICO LEGATO AD ALTEZZA TRAVI E PILASTRI ---
+    # Dimensionamento C.A.P. (arrotondato ai 5 cm, senza decimali)
+    h_cap_cm = max(80, ((int(h_legno_cm * 1.2) + 4) // 5) * 5)
+    profilo_cap = f"Trave a T rovescia precompressa altezza {h_cap_cm} cm"
+
+    # --- CONNESSIONI E NODI SCALATI SULLE DIMENSIONI GEOMETRICHE ---
     fattore_geometria = h_legno_cm / 60.0 
 
     n_bulloni_nodo = max(4, int(v_ed / 35.0) * 2)
