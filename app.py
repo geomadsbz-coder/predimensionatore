@@ -18,7 +18,6 @@ def estrai_coordinate_da_url(url):
     if not url:
         return 46.4983, 11.3548 
     
-    # Risoluzione link abbreviati o di reindirizzamento (goo.gl, googleusercontent, maps.app.goo.gl)
     if any(domain in url for domain in ["goo.gl", "googleusercontent.com", "maps.app.goo.gl"]):
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -27,7 +26,6 @@ def estrai_coordinate_da_url(url):
         except Exception:
             pass 
             
-    # Pattern 1: @lat,lon
     match_at = re.search(r'@([-0-9.]+),([-0-9.]+)', url)
     if match_at:
         try:
@@ -38,7 +36,6 @@ def estrai_coordinate_da_url(url):
         except ValueError:
             pass
             
-    # Pattern 2: q=lat,lon / ll=lat,lon / s_loc=lat,lon
     match_q = re.search(r'[?&](?:q|ll|s_loc)=([-0-9.]+)[,%]2[F0]([-0-9.]+)', url) or re.search(r'[?&](?:q|ll|s_loc)=([-0-9.]+),([-0-9.]+)', url)
     if match_q:
         try:
@@ -49,7 +46,6 @@ def estrai_coordinate_da_url(url):
         except ValueError:
             pass
 
-    # Pattern 3: !3dlat!4dlon (Google Maps data parameters)
     match_3d4d = re.search(r'!3d([-0-9.]+)!4d([-0-9.]+)', url)
     if match_3d4d:
         try:
@@ -60,7 +56,6 @@ def estrai_coordinate_da_url(url):
         except ValueError:
             pass
 
-    # Pattern 4: /place/lat,lon or /search/lat,lon in path
     match_path = re.search(r'/(?:place|search)/([-0-9.]+),([-0-9.]+)', url)
     if match_path:
         try:
@@ -71,7 +66,6 @@ def estrai_coordinate_da_url(url):
         except ValueError:
             pass
             
-    # Pattern 5: raw lat,lon
     match_raw = re.search(r'([-0-9.]+)\s*,\s*([-0-9.]+)', url)
     if match_raw:
         try:
@@ -148,13 +142,11 @@ def esegui_calcolo_deterministico(dati_geo):
         m_ed = (q_ed * (luce_campata ** 2)) / 8.0
         v_ed = (q_ed * luce_campata) / 2.0
 
-    # Dimensionamento Legno Lamellare GL24h (arrotondato ai 4 cm commerciali, senza decimali)
     b_legno_cm = 20 
     w_req_cm3 = (m_ed * 1e6) / 14500.0  
     h_legno_cm = int((6 * w_req_cm3 / b_legno_cm) ** 0.5)
     h_legno_cm = max(44, ((h_legno_cm + 3) // 4) * 4) 
 
-    # Dimensionamento Acciaio S355JR
     w_el_req_cm3 = (m_ed * 100.0) / 33.8 
     if w_el_req_cm3 > 3500:
         profilo_acciaio = "IPE 600 / HEB 500"
@@ -169,7 +161,6 @@ def esegui_calcolo_deterministico(dati_geo):
         profilo_acciaio = "IPE 330 / HEA 240"
         pilastro_acciaio = "HEB 200"
 
-    # Dimensionamento C.A.P. (arrotondato ai 5 cm, senza decimali)
     h_cap_cm = max(80, ((int(h_legno_cm * 1.2) + 4) // 5) * 5)
     profilo_cap = f"Trave a T rovescia precompressa altezza {h_cap_cm} cm"
 
@@ -722,48 +713,172 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
                         model_name='gemini-3.6-flash',
                         generation_config={"response_mime_type": "application/json", "temperature": 0.0}
                     )
-                    prompt = f"""
-Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018. Analizza il testo tecnico e restituisci un oggetto JSON valido (senza markdown) con queste chiavi esatte:
-- "luogo": stringa
-- "qsk": float
-- "zona_vento": stringa
-- "pressione_vento": stringa
-- "zona_sismica": stringa
-- "classe_uso": stringa
-- "fattore_struttura_q": stringa
-- "campate_controventi_indici": lista di interi
-- "interasse_arcarecci": float
-- "sezione_arcarecci": stringa
-- "verifica_arcarecci": stringa
-- "baraccatura_legno_lamellare": stringa
-- "baraccatura_legno_massiccio": stringa
-- "baraccatura_acciaio": stringa
-- "controventi_copertura_legno": stringa
-- "controventi_copertura_acciaio": stringa
-- "controventi_copertura_pos": stringa
-- "controventi_parete_legno": stringa
-- "controventi_parete_acciaio": stringa
-- "controventi_parete_pos": stringa
-- "conn_trave_pilastro_tipo": stringa
-- "conn_trave_pilastro_elementi": stringa
-- "conn_trave_pilastro_kg": stringa
-- "conn_pilastro_fondazione_tipo": stringa
-- "conn_pilastro_fondazione_elementi": stringa
-- "conn_pilastro_fondazione_kg": stringa
-- "dettaglio_giunto_colmo": stringa
-- "classe_resistenza_fuoco": stringa
-- "mq_intumescente": stringa
-- "dettaglio_verniciatura": stringa
-- "note_tecniche": stringa
-
-Testo da analizzare:
-"{testo_totale_analisi}"
-                    """
+                    prompt = (
+                        "Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018. "
+                        "Analizza il testo tecnico e restituisci un oggetto JSON valido (senza markdown) con queste chiavi esatte: "
+                        "luogo, qsk, zona_vento, pressione_vento, zona_sismica, classe_uso, fattore_struttura_q, "
+                        "campate_controventi_indici, interasse_arcarecci, sezione_arcarecci, verifica_arcarecci, "
+                        "baraccatura_legno_lamellare, baraccatura_legno_massiccio, baraccatura_acciaio, "
+                        "controventi_copertura_legno, controventi_copertura_acciaio, controventi_copertura_pos, "
+                        "controventi_parete_legno, controventi_parete_acciaio, controventi_parete_pos, "
+                        "conn_trave_pilastro_tipo, conn_trave_pilastro_elementi, conn_trave_pilastro_kg, "
+                        "conn_pilastro_fondazione_tipo, conn_pilastro_fondazione_elementi, conn_pilastro_fondazione_kg, "
+                        "dettaglio_giunto_colmo, classe_resistenza_fuoco, mq_intumescente, dettaglio_verniciatura, note_tecniche.\n\n"
+                        "Testo da analizzare:\n" + str(testo_totale_analisi)
+                    )
                     with st.spinner('Elaborazione calcoli strutturali con IA...'):
                         risposta_ia = model.generate_content(prompt)
                         testo_risposta = risposta_ia.text.strip()
-                        if testo_risposta.startswith("
-http://googleusercontent.com/immersive_entry_chip/0
-http://googleusercontent.com/immersive_entry_chip/1
-http://googleusercontent.com/immersive_entry_chip/2
-</details>
+                        if testo_risposta.startswith("```json"): testo_risposta = testo_risposta[7:]
+                        if testo_risposta.startswith("```"): testo_risposta = testo_risposta[3:]
+                        if testo_risposta.endswith("```"): testo_risposta = testo_risposta[:-3]
+                        
+                        dati = json.loads(testo_risposta.strip())
+                        dati.update(dati_base)
+                        risultati_strutturali = esegui_calcolo_deterministico(dati)
+                        dati.update(risultati_strutturali)
+                        distinta_elementi = calcola_distinta_elementi(dati)
+                        dati['distinta'] = distinta_elementi
+                        st.session_state['dati_ultimi'] = dati
+                        st.success("Modello ibrido IA calcolato con successo!")
+                except Exception as e:
+                    st.error(f"Errore durante l'elaborazione con IA: {e}")
+
+if 'dati_ultimi' in st.session_state:
+    dati = st.session_state['dati_ultimi']
+    distinta = dati.get('distinta', calcola_distinta_elementi(dati))
+    st.markdown("---")
+    
+    col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
+    with col_dl2:
+        word_file = genera_word_report(dati, distinta)
+        st.download_button(
+            label="📄 Scarica Relazione e Distinta Elementi in Word (.docx)",
+            data=word_file,
+            file_name=f"Relazione_Predimensionamento_{dati.get('luogo', 'Progetto').replace(' ', '_')}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            type="primary",
+            use_container_width=True
+        )
+    
+    st.markdown("---")
+    st.markdown("### 🌐 Modello 3D Dinamico della Struttura")
+    fig_3d = genera_modello_3d(dati)
+    st.plotly_chart(fig_3d, use_container_width=True)
+    
+    st.markdown("---")
+    st.markdown("### 📋 1. Distinta Elementi Principali (Computo Quantità)")
+    c_e1, c_e2, c_e3, c_e4 = st.columns(4)
+    c_e1.metric("Telai Principali", f"{distinta['num_telai']} pz")
+    c_e2.metric("Pilastri Totali", f"{distinta['num_pilastri_totali']} pz", f"{distinta['num_pilastri_perimetrali']} Per. | {distinta['num_pilastri_interni']} Int.", delta_color="off")
+    c_e3.metric("Travi di Falda", f"{distinta['num_travi_falda']} pz")
+    c_e4.metric("File Arcarecci", f"{distinta['num_file_arcarecci']} file", f"Tot: {distinta['ml_arcarecci']} ml", delta_color="off")
+
+    c_e5, c_e6, c_e7, c_e8 = st.columns(4)
+    c_e5.metric("Moduli Controvento Cop.", f"{distinta['num_croci_copertura']} croci")
+    c_e6.metric("Moduli Controvento Parete", f"{distinta['num_croci_parete']} croci")
+    c_e7.metric("Superficie Copertura", f"{distinta['mq_copertura']} mq")
+    c_e8.metric("Superficie Pareti Lunghe", f"{distinta['mq_pareti_lunghe']} mq")
+
+    st.markdown("---")
+    st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Località / Mappa", dati.get("luogo", "N.D."))
+    c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
+    c3.metric("Zona Vento", dati.get("zona_vento", "N.D."))
+    c4.metric("Pressione Vento", dati.get("pressione_vento", "N.D."))
+    
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric("Azione Sismica", dati.get("zona_sismica", "N.D."))
+    c6.metric("Luce Totale", f"{dati.get('luce_totale')} m")
+    c7.metric("Schema Telaio", f"{dati.get('num_appoggi')} Appoggi")
+    c8.metric("Travatura", dati.get("tipo_travatura", "Bi-falda semplice"))
+    
+    st.info(f"🏗️ **Copertura configurata:** Pannello {dati.get('tipo_isolante')} ({dati.get('spessore_pannello')}) | **Impianto FV:** {dati.get('impianto_fv_desc')} | **Carico Extra:** {dati.get('carico_aggiuntivo', 0.0)} kN/mq")
+    
+    st.markdown("---")
+    st.markdown("### 🪵 3. Arcarecci di Copertura")
+    st.info(f"**Passo Arcarecci:** {dati.get('interasse_arcarecci', 1.5)} m | **Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')} | **Stato:** {dati.get('verifica_arcarecci', 'Verificato')}")
+    
+    st.markdown("---")
+    st.markdown("### 🧱 4. Baraccatura di Parete (Supporto Rivestimento)")
+    st.write(f"**Pannello Facciata:** {dati.get('tipo_isolante_parete', 'N.D.')} ({dati.get('spessore_pannello_parete', 'N.D.')})")
+    col_b1, col_b2, col_b3 = st.columns(3)
+    with col_b1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.success(dati.get('baraccatura_legno_lamellare', 'N.D.'))
+    with col_b2:
+        st.markdown("#### 🪵 Legno Massiccio")
+        st.success(dati.get('baraccatura_legno_massiccio', 'N.D.'))
+    with col_b3:
+        st.markdown("#### ⚙️ Acciaio")
+        st.warning(dati.get('baraccatura_acciaio', 'N.D.'))
+
+    st.markdown("---")
+    st.markdown("### 📐 5. Travi Principali / Portali (Confronto Tecnologico)")
+    col_t1, col_t2, col_t3 = st.columns(3)
+    with col_t1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.success(dati.get('travi_legno', 'N.D.'))
+    with col_t2:
+        st.markdown("#### ⚙️ Acciaio")
+        st.warning(dati.get('travi_acciaio', 'N.D.'))
+    with col_t3:
+        st.markdown("#### 🏛️ C.a.p.")
+        st.error(dati.get('travi_cap', 'N.D.'))
+    
+    st.markdown("---")
+    st.markdown("### 🏛️ 6. Pilastri (Perimetrali e Intermedi)")
+    col_p1, col_p2, col_p3 = st.columns(3)
+    with col_p1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.success(dati.get('pilastri_legno', 'N.D.'))
+    with col_p2:
+        st.markdown("#### ⚙️ Acciaio")
+        st.warning(dati.get('pilastri_acciaio', 'N.D.'))
+    with col_p3:
+        st.markdown("#### 🏛️ C.a.p.")
+        st.error(dati.get('pilastri_cap', 'N.D.'))
+    
+    st.markdown("---")
+    st.markdown("### 🔗 7. Stabilizzazione e Controventi (Azioni Orizzontali)")
+    col_cv1, col_cv2 = st.columns(2)
+    with col_cv1:
+        st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
+        st.write(f"📍 **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
+        st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno', 'N.D.')}")
+        st.info(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_copertura_acciaio', 'N.D.')}")
+    with col_cv2:
+        st.markdown("#### 🧱 Controventi di Parete (Controventatura)")
+        st.write(f"📍 **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
+        st.warning(f"🌲 **Opzione Legno:** {dati.get('controventi_parete_legno', 'N.D.')}")
+        st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
+    
+    st.markdown("---")
+    st.markdown("### 🔩 8. Dimensionamento Dettagliato Connessioni, Nodi e Giunto in Colmo")
+    col_n1, col_n2 = st.columns(2)
+    with col_n1:
+        st.markdown("#### 🔗 Connessione Pilastro / Trave di Copertura")
+        st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
+        st.write(f"- **Organi di Collegamento:** {dati.get('conn_trave_pilastro_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Connessione", dati.get('conn_trave_pilastro_kg', 'N.D.'))
+    with col_n2:
+        st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
+        st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
+        st.write(f"- **Ancoraggi:** {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Ancoraggi/Piastra", dati.get('conn_pilastro_fondazione_kg', 'N.D.'))
+    
+    if dati.get('tipo_travatura') == "Trave di falda giuntata in colmo":
+        st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
+    
+    st.markdown("### 🔥 9. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
+    with col_f2:
+        st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
+    st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
+    
+    st.markdown("---")
+    st.markdown("### 📝 10. Relazione e Note Tecniche")
+    st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
