@@ -12,17 +12,29 @@ import numpy as np
 import re
 import requests
 
-# --- FUNZIONE ROBUSTA PER ESTRARRE COORDINATE DA URL DI GOOGLE MAPS ---
-def estrai_coordinate_da_url(url):
+# --- FUNZIONE ROBUSTA PER ESTRARRE COORDINATE E NOME LUOGO DA URL DI GOOGLE MAPS ---
+def estrai_dati_da_url_maps(url):
     url = url.strip()
-    if not url:
-        return 46.4983, 11.3548 
+    lat_def, lon_def = 46.4983, 11.3548
+    nome_luogo_estratto = ""
     
+    if not url:
+        return lat_def, lon_def, ""
+    
+    # Estrazione nome luogo dal path di Google Maps (es. /place/Pantelleria,+TP/...)
+    match_place = re.search(r'/place/([^/@]+)', url)
+    if match_place:
+        raw_place = match_place.group(1)
+        nome_luogo_estratto = raw_place.replace('+', ' ').split(',')[0].strip()
+
     if any(domain in url for domain in ["goo.gl", "googleusercontent.com", "maps.app.goo.gl"]):
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             response = requests.get(url, allow_redirects=True, timeout=5, headers=headers)
             url = response.url 
+            match_place_redir = re.search(r'/place/([^/@]+)', url)
+            if match_place_redir and not nome_luogo_estratto:
+                nome_luogo_estratto = match_place_redir.group(1).replace('+', ' ').split(',')[0].strip()
         except Exception:
             pass 
             
@@ -32,7 +44,7 @@ def estrai_coordinate_da_url(url):
             lat = float(match_at.group(1))
             lon = float(match_at.group(2))
             if 35.0 <= lat <= 47.5 and 6.0 <= lon <= 19.0:
-                return lat, lon
+                return lat, lon, nome_luogo_estratto
         except ValueError:
             pass
             
@@ -42,7 +54,7 @@ def estrai_coordinate_da_url(url):
             lat = float(match_q.group(1))
             lon = float(match_q.group(2))
             if 35.0 <= lat <= 47.5 and 6.0 <= lon <= 19.0:
-                return lat, lon
+                return lat, lon, nome_luogo_estratto
         except ValueError:
             pass
 
@@ -52,7 +64,7 @@ def estrai_coordinate_da_url(url):
             lat = float(match_3d4d.group(1))
             lon = float(match_3d4d.group(2))
             if 35.0 <= lat <= 47.5 and 6.0 <= lon <= 19.0:
-                return lat, lon
+                return lat, lon, nome_luogo_estratto
         except ValueError:
             pass
 
@@ -62,7 +74,7 @@ def estrai_coordinate_da_url(url):
             lat = float(match_path.group(1))
             lon = float(match_path.group(2))
             if 35.0 <= lat <= 47.5 and 6.0 <= lon <= 19.0:
-                return lat, lon
+                return lat, lon, nome_luogo_estratto
         except ValueError:
             pass
             
@@ -72,14 +84,49 @@ def estrai_coordinate_da_url(url):
             lat = float(match_raw.group(1))
             lon = float(match_raw.group(2))
             if 35.0 <= lat <= 47.5 and 6.0 <= lon <= 19.0:
-                return lat, lon
+                return lat, lon, nome_luogo_estratto
         except ValueError:
             pass
             
-    return 46.4983, 11.3548 
+    return lat_def, lon_def, nome_luogo_estratto
 
-# --- MOTORE DI CALCOLO STRUTTURALE DETERMINISTICO DA COORDINATE (NTC 2018) ---
-def estrai_parametri_ntc_da_coordinate(lat, lon):
+# --- MOTORE DI CALCOLO STRUTTURALE DETERMINISTICO (NTC 2018 CON CONTROLLO COMUNE/ZONA SISMICA) ---
+def estrai_parametri_ntc_da_coordinate_e_comune(lat, lon, comune_input=""):
+    comune_pulito = comune_input.strip().lower()
+    
+    # 1. CONTROLLO ESPLICITO PER ECCEZIONI NOTE (es. Pantelleria, Lampedusa, Sardegna, ecc.)
+    if "pantelleria" in comune_pulito or (36.7 <= lat <= 37.0 and 11.8 <= lon <= 12.1):
+        altitudine_stimata = 50.0  
+        zona_neve = "Zona III (Meridionale / Isole)"
+        qsk = 0.50
+        zona_vento = "Zona 4 (Sud / Isole)"
+        pressione_vento = 0.58
+        zona_sismica = "Zona 4 (Sismicità molto bassa - Pantelleria)"
+        luogo_str = f"Comune: Pantelleria (TP) [GPS: {lat:.4f}, {lon:.4f}] - Alt. {altitudine_stimata}m"
+        return luogo_str, qsk, zona_vento, f"{pressione_vento} kN/mq", zona_sismica, altitudine_stimata
+
+    if "lampedusa" in comune_pulito or (35.4 <= lat <= 35.6 and 12.5 <= lon <= 12.7):
+        altitudine_stimata = 20.0  
+        zona_neve = "Zona III (Meridionale / Isole)"
+        qsk = 0.50
+        zona_vento = "Zona 4 (Sud / Isole)"
+        pressione_vento = 0.60
+        zona_sismica = "Zona 4 (Sismicità molto bassa - Lampedusa e Linosa)"
+        luogo_str = f"Comune: Lampedusa e Linosa (AG) [GPS: {lat:.4f}, {lon:.4f}] - Alt. {altitudine_stimata}m"
+        return luogo_str, qsk, zona_vento, f"{pressione_vento} kN/mq", zona_sismica, altitudine_stimata
+
+    if "sardegna" in comune_pulito or "cagliari" in comune_pulito or "sassari" in comune_pulito or "nuoro" in comune_pulito or "oristano" in comune_pulito or (8.0 <= lon <= 10.0 and 38.8 <= lat <= 41.3):
+        altitudine_stimata = 50.0
+        zona_neve = "Zona III (Sardegna)"
+        qsk = 0.50
+        zona_vento = "Zona 4 (Sardegna)"
+        pressione_vento = 0.55
+        zona_sismica = "Zona 4 (Sismicità trascurabile / Territorio Regionale Sardo)"
+        comune_str = comune_input if comune_input else "Sardegna"
+        luogo_str = f"Comune: {comune_str.capitalize()} [GPS: {lat:.4f}, {lon:.4f}] - Alt. {altitudine_stimata}m"
+        return luogo_str, qsk, zona_vento, f"{pressione_vento} kN/mq", zona_sismica, altitudine_stimata
+
+    # 2. SEGNALAZIONI GEOGRAFICHE GENERALI (NTC 2018)
     if lat > 45.8:
         altitudine_stimata = 650.0  
         zona_neve = "Zona I (Alpina / Montana)"
@@ -93,23 +140,24 @@ def estrai_parametri_ntc_da_coordinate(lat, lon):
         qsk = round(0.85 * (1.0 + (altitudine_stimata / 778.0) ** 2), 2)
         zona_vento = "Zona 3 (vb = 27 m/s - Interna)"
         pressione_vento = 0.48
-        zona_sismica = "Zona 2 / 3 (Media/Bassa sismicità)"
+        zona_sismica = "Zona 2 / 3 (Media/Bassa sismicità - Pianura Padana)"
     elif lat > 41.0:
         altitudine_stimata = 150.0  
         zona_neve = "Zona II (Interna Centro)"
         qsk = round(0.85 * (1.0 + (altitudine_stimata / 778.0) ** 2), 2)
         zona_vento = "Zona 2 (vb = 28 m/s)"
         pressione_vento = 0.52
-        zona_sismica = "Zona 1 / 2 (Alta/Media sismicità - Appennino)"
+        zona_sismica = "Zona 1 / 2 (Alta/Media sismicità - Appennino Centromeridionale)"
     else:
         altitudine_stimata = 50.0   
         zona_neve = "Zona III (Meridionale / Costiera)"
         qsk = round(0.50 * (1.0 + (altitudine_stimata / 833.0) ** 2), 2)
         zona_vento = "Zona 3 o 4 (Sud/Isole)"
         pressione_vento = 0.58
-        zona_sismica = "Zona 1 (Alta sismicità - es. Calabria/Sicilia)"
+        zona_sismica = "Zona 2 (Meridionale / Media sismicità)"
         
-    luogo_str = f"Google Maps ({lat:.4f}, {lon:.4f}) - Alt. stimata: {altitudine_stimata}m - {zona_neve}"
+    comune_display = f"Comune: {comune_input.capitalize()}" if comune_input else f"Google Maps ({lat:.4f}, {lon:.4f})"
+    luogo_str = f"{comune_display} - Alt. stimata: {altitudine_stimata}m - {zona_neve}"
     return luogo_str, qsk, zona_vento, f"{pressione_vento} kN/mq", zona_sismica, altitudine_stimata
 
 def esegui_calcolo_deterministico(dati_geo):
@@ -121,8 +169,9 @@ def esegui_calcolo_deterministico(dati_geo):
     
     lat = dati_geo.get('latitudine', 46.4983)
     lon = dati_geo.get('longitudine', 11.3548)
+    comune = dati_geo.get('comune', '')
     
-    luogo_str, qsk, zona_vento, pressione_vento, zona_sismica, altitudine_stimata = estrai_parametri_ntc_da_coordinate(lat, lon)
+    luogo_str, qsk, zona_vento, pressione_vento, zona_sismica, altitudine_stimata = estrai_parametri_ntc_da_coordinate_e_comune(lat, lon, comune)
     
     g1 = 0.15  
     g2 = 0.25  
@@ -171,21 +220,19 @@ def esegui_calcolo_deterministico(dati_geo):
     h_cap_cm = max(80, ((int(h_legno_cm * 1.2) + 4) // 5) * 5)
     profilo_cap = f"Trave a T rovescia precompressa altezza {h_cap_cm} cm"
 
-    # --- DIMENSIONAMENTO SEZIONI PILASTRI (CORRETTO: INTERMEDI PIÙ ESILI DEI PERIMETRALI) ---
+    # --- DIMENSIONAMENTO SEZIONI PILASTRI ---
     h_pil_perim_cm = max(48, ((int(h_legno_cm * 0.85) + 3) // 4) * 4)
     b_pil_perim_cm = 20
     
     h_pil_interm_cm = max(36, ((int(h_legno_cm * 0.60) + 3) // 4) * 4)
     b_pil_interm_cm = 20
 
-    # --- NODI E CONNESSIONI BILANCIATI E PROPORZIONATI ---
-    # Nodi Perimetrali
+    # --- NODI E CONNESSIONI ---
     n_bulloni_perim = max(6, int(v_ed / 25.0) * 2)
     peso_conn_perim_kg = round(n_bulloni_perim * 4.0 + (h_pil_perim_cm * b_pil_perim_cm * 0.025) + 25.0, 1)
     n_anc_perim = max(4, int(v_ed / 30.0) * 2)
     peso_anc_perim_kg = round(n_anc_perim * 4.5 + (h_pil_perim_cm * b_pil_perim_cm * 0.03) + 30.0, 1)
 
-    # Nodi Intermedi
     n_bulloni_interm = max(4, int(v_ed / 30.0) * 2)
     peso_conn_interm_kg = round(n_bulloni_interm * 3.8 + (h_pil_interm_cm * b_pil_interm_cm * 0.022) + 20.0, 1)
     n_anc_interm = max(4, int(v_ed / 35.0) * 2)
@@ -238,7 +285,7 @@ def esegui_calcolo_deterministico(dati_geo):
         "classe_resistenza_fuoco": "R 60 (Conforme ai requisiti antincendio attività industriali)",
         "mq_intumescente": f"{mq_acciaio} mq",
         "dettaglio_verniciatura": "Primer epossidico anticorrosivo + Vernice intumescente a spessore testata per 60 min",
-        "note_tecniche": f"Predimensionamento deterministico NTC 2018 basato su coordinate GPS (lat: {lat:.4f}, lon: {lon:.4f}). Altitudine stimata: {altitudine_stimata}m, qsk = {qsk} kN/mq."
+        "note_tecniche": f"Predimensionamento deterministico NTC 2018 basato su Comune/GPS (Comune: {comune if comune else 'N.D.'}, lat: {lat:.4f}, lon: {lon:.4f}). qsk = {qsk} kN/mq."
     }
     return risultati_deterministici
 
@@ -308,7 +355,7 @@ def genera_word_report(dati, distinta):
     doc.add_heading('Relazione Tecnica di Predimensionamento e Calcolo (NTC 2018)', 0)
     
     doc.add_heading('1. Parametri Geometrici, Climatici, Sismici e di Configurazione', level=1)
-    doc.add_paragraph(f"Località / Google Maps: {dati.get('luogo', 'N.D.')}")
+    doc.add_paragraph(f"Località / Comune: {dati.get('luogo', 'N.D.')}")
     doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')} | Classe d'Uso: {dati.get('classe_uso', 'N.D.')} | Fattore q: {dati.get('fattore_struttura_q', 'N.D.')}")
@@ -627,14 +674,26 @@ testo_commerciale = st.text_area(
     key="testo_commerciale"
 )
 
-st.markdown("### 📍 Localizzazione Cantiere (Google Maps)")
-maps_url_ui = st.text_input(
-    "Incolla il link di Google Maps del cantiere (es. https://maps.app.goo.gl/... o link completo di Google Maps)",
-    value="",
-    placeholder="Incolla qui l'URL copiato da Google Maps...",
-    key="maps_url_ui",
-    help="Vai su Google Maps, seleziona il punto esatto, clicca su Condividi o copia il link dalla barra del browser e incollalo qui."
-)
+st.markdown("### 📍 Localizzazione Cantiere (Google Maps e Comune)")
+col_loc1, col_loc2 = st.columns([2, 1])
+with col_loc1:
+    maps_url_ui = st.text_input(
+        "Incolla il link di Google Maps del cantiere:",
+        value="",
+        placeholder="https://maps.app.goo.gl/... o link completo",
+        key="maps_url_ui",
+        help="Incolla il link di Google Maps: il sistema ricaverà automaticamente le coordinate GPS e il comune."
+    )
+with col_loc2:
+    # Tentiamo di pre-estrarre il comune dal link se inserito
+    _, _, luogo_estratto_url = estrai_dati_da_url_maps(maps_url_ui)
+    comune_cantiere_ui = st.text_input(
+        "Comune di installazione",
+        value=luogo_estratto_url,
+        placeholder="Es. Pantelleria, Bolzano...",
+        key="comune_cantiere_ui",
+        help="Inserisci il nome del Comune per garantire la corretta attribuzione della zona sismica NTC 2018."
+    )
 
 st.markdown("### 📐 Dimensioni Geometriche dell'Edificio (Modificabili)")
 col_dim1, col_dim2, col_dim3, col_dim4, col_dim5 = st.columns(5)
@@ -692,7 +751,9 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
     if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or altezza_colmo_ui <= 0:
         st.warning("⚠️ Inserisci tutte le dimensioni geometriche con valori superiori a zero prima di eseguire il calcolo.")
     else:
-        lat_estratta, lon_estratta = estrai_coordinate_da_url(maps_url_ui)
+        lat_estratta, lon_estratta, place_url = estrai_dati_da_url_maps(maps_url_ui)
+        comune_finale = comune_cantiere_ui if comune_cantiere_ui else place_url
+        
         num_campate_calc = max(1, int(round(lunghezza_edificio_ui / interasse_portali_ui)))
         impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
         
@@ -712,23 +773,25 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
             'impianto_fv_desc': impianto_fv_desc,
             'carico_aggiuntivo': carico_aggiuntivo,
             'latitudine': lat_estratta,
-            'longitudine': lon_estratta
+            'longitudine': lon_estratta,
+            'comune': comune_finale
         }
 
         if modalita_deterministica:
-            with st.spinner('Estrazione coordinate ed esecuzione calcolo deterministico NTC 2018...'):
+            with st.spinner('Estrazione coordinate ed esecuzione calcolo deterministico NTC 2018 (con verifica Comune/Sismica)...'):
                 dati = esegui_calcolo_deterministico(dati_base)
                 dati.update(dati_base)
                 distinta_elementi = calcola_distinta_elementi(dati)
                 dati['distinta'] = distinta_elementi
                 st.session_state['dati_ultimi'] = dati
-                st.success(f"Link analizzato correttamente (Lat: {lat_estratta:.4f}, Lon: {lon_estratta:.4f})! Calcolo completato.")
+                st.success(f"Cantiere localizzato ({comune_finale if comune_finale else 'GPS'}). Calcolo NTC 2018 completato con successo!")
         else:
             if not api_key:
                 st.error("Inserisci prima l'API Key di Google nella barra laterale per usare la modalità IA!")
             else:
                 dati_config_str = f"""
-                --- CONFIGURAZIONE GEOMETRICA E LINK MAPS ---
+                --- CONFIGURAZIONE GEOMETRICA E LOCALIZZAZIONE ---
+                - Comune / Località: {comune_finale}
                 - Link Google Maps: {maps_url_ui} (Lat: {lat_estratta}, Lon: {lon_estratta})
                 - Lunghezza Edificio: {lunghezza_edificio_ui} m
                 - Interasse Portali: {interasse_portali_ui} m (Numero Campate: {num_campate_calc})
@@ -823,7 +886,7 @@ if 'dati_ultimi' in st.session_state:
     st.markdown("---")
     st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Località / Mappa", dati.get("luogo", "N.D."))
+    c1.metric("Località / Comune", dati.get("luogo", "N.D."))
     c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
     c3.metric("Zona Vento", dati.get("zona_vento", "N.D."))
     c4.metric("Pressione Vento", dati.get("pressione_vento", "N.D."))
