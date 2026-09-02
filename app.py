@@ -158,11 +158,12 @@ def estrai_parametri_ntc_da_coordinate_e_comune(lat, lon, comune_input=""):
     return luogo_str, qsk, zona_vento, f"{pressione_vento} kN/mq", zona_sismica, altitudine_stimata
 
 def esegui_calcolo_deterministico(dati_geo):
-    luce = dati_geo['luce_totale']
+    luce_totale = dati_geo['luce_totale']
     interasse = dati_geo['interasse_portali']
     h_gronda = dati_geo['altezza_gronda']
     h_colmo = dati_geo['altezza_colmo']
     num_appoggi = dati_geo['num_appoggi']
+    lunghezza_edificio = dati_geo['lunghezza_edificio']
     
     lat = dati_geo.get('latitudine', 46.4983)
     lon = dati_geo.get('longitudine', 11.3548)
@@ -179,12 +180,12 @@ def esegui_calcolo_deterministico(dati_geo):
     s = qsk * 1.0 
     q_ed = interasse * (1.3 * g1 + 1.5 * g2 + 1.5 * s)
     
+    luce_campata = luce_totale / (num_appoggi - 1) if num_appoggi >= 3 else luce_totale
+    
     if num_appoggi >= 3:
-        luce_campata = luce / (num_appoggi - 1)
         m_ed = (q_ed * (luce_campata ** 2)) / 10.0 
         v_ed = (q_ed * luce_campata) / 2.0        
     else:
-        luce_campata = luce
         m_ed = (q_ed * (luce_campata ** 2)) / 8.0
         v_ed = (q_ed * luce_campata) / 2.0
 
@@ -234,33 +235,59 @@ def esegui_calcolo_deterministico(dati_geo):
     n_anc_interm = max(4, int(v_ed / 35.0) * 2)
     peso_anc_interm_kg = round(n_anc_interm * 4.0 + (h_pil_interm_cm * b_pil_interm_cm * 0.025) + 25.0, 1)
 
-    # --- NUOVO: DIMENSIONAMENTO MONTANTI TIMPANO DI FACCIATA ---
-    # La baraccatura porta tipicamente max 6.0 metri di luce, altrimenti richiede montanti verticali
+    # --- DIMENSIONAMENTO MONTANTI TIMPANO (PARETI FRONTALI) ---
     passo_max_baraccatura = 6.0 
     num_sottocampate_timpano = max(1, int(np.ceil(luce_campata / passo_max_baraccatura)))
     num_montanti_per_campata_timpano = num_sottocampate_timpano - 1
-    # Totale montanti su UN singolo timpano (tutte le campate interne a quel timpano)
-    num_montanti_timpano = num_montanti_per_campata_timpano * (num_appoggi - 1)
+    num_montanti_timpano_singola_facciata = num_montanti_per_campata_timpano * (num_appoggi - 1)
     passo_montanti_timpano = luce_campata / num_sottocampate_timpano if num_sottocampate_timpano > 0 else 0
 
-    if h_colmo <= 6.5:
-        montante_timpano_legno = "Sezione 14x14 cm (GL24h)"
-        montante_timpano_acciaio = "HEA 120 o Tubolare 120x120x4"
-        montante_timpano_cap = "Pilastrino prefabbricato 20x20 cm"
-    elif h_colmo <= 9.5:
-        montante_timpano_legno = "Sezione 16x16 cm (GL24h)"
-        montante_timpano_acciaio = "HEA 140 o Tubolare 150x150x5"
-        montante_timpano_cap = "Pilastrino prefabbricato 25x25 cm"
-    elif h_colmo <= 12.5:
-        montante_timpano_legno = "Sezione 16x24 cm (GL24h)"
-        montante_timpano_acciaio = "HEA 180 o Tubolare 200x200x5"
-        montante_timpano_cap = "Pilastrino prefabbricato 30x30 cm"
-    else:
-        montante_timpano_legno = "Sezione 20x28 cm (GL24h)"
-        montante_timpano_acciaio = "HEA 220 o Tubolare 250x250x6"
-        montante_timpano_cap = "Pilastrino prefabbricato 40x40 cm"
+    ml_tot_montanti_timpano = 0.0
+    ml_per_montante_timpano = []
+    
+    if num_montanti_timpano_singola_facciata > 0 and passo_montanti_timpano > 0:
+        for c in range(num_appoggi - 1):
+            x_start = c * luce_campata
+            for m in range(1, num_montanti_per_campata_timpano + 1):
+                x_m = x_start + m * passo_montanti_timpano
+                if x_m <= luce_totale / 2:
+                    h_m = h_gronda + (h_colmo - h_gronda) * (x_m / (luce_totale / 2))
+                else:
+                    h_m = h_colmo - (h_colmo - h_gronda) * ((x_m - luce_totale / 2) / (luce_totale / 2))
+                ml_tot_montanti_timpano += h_m
+                ml_per_montante_timpano.append(round(h_m, 2))
 
-    mq_acciaio = round((luce + h_gronda * 2) * (dati_geo['num_campate'] + 1) * 0.6, 1)
+    ml_tot_timpani_entrambe = ml_tot_montanti_timpano * 2
+
+    # --- DIMENSIONAMENTO MONTANTI PARETI LONGITUDINALI ---
+    num_campate_totali = max(1, int(round(lunghezza_edificio / interasse)))
+    num_sottocampate_long = max(1, int(np.ceil(interasse / passo_max_baraccatura)))
+    num_montanti_per_campata_long = num_sottocampate_long - 1
+    passo_montanti_long = interasse / num_sottocampate_long if num_sottocampate_long > 0 else 0
+    
+    num_totale_montanti_long_singola_parete = num_montanti_per_campata_long * num_campate_totali
+    ml_tot_montanti_long_singola_parete = num_totale_montanti_long_singola_parete * h_gronda
+    ml_tot_montanti_long_entrambe_pareti = ml_tot_montanti_long_singola_parete * 2
+
+    # Sezione Montanti
+    if h_colmo <= 6.5:
+        montante_legno = "Sezione 14x14 cm (GL24h)"
+        montante_acciaio = "HEA 120 o Tubolare 120x120x4"
+        montante_cap = "Pilastrino prefabbricato 20x20 cm"
+    elif h_colmo <= 9.5:
+        montante_legno = "Sezione 16x16 cm (GL24h)"
+        montante_acciaio = "HEA 140 o Tubolare 150x150x5"
+        montante_cap = "Pilastrino prefabbricato 25x25 cm"
+    elif h_colmo <= 12.5:
+        montante_legno = "Sezione 16x24 cm (GL24h)"
+        montante_acciaio = "HEA 180 o Tubolare 200x200x5"
+        montante_cap = "Pilastrino prefabbricato 30x30 cm"
+    else:
+        montante_legno = "Sezione 20x28 cm (GL24h)"
+        montante_acciaio = "HEA 220 o Tubolare 250x250x6"
+        montante_cap = "Pilastrino prefabbricato 40x40 cm"
+
+    mq_acciaio = round((luce_totale + h_gronda * 2) * (dati_geo['num_campate'] + 1) * 0.6, 1)
 
     risultati_deterministici = {
         "luogo": luogo_str,
@@ -287,12 +314,19 @@ def esegui_calcolo_deterministico(dati_geo):
         "baraccatura_legno_massiccio": f"Correnti in legno massiccio C24 sezione 14x16 cm interasse 1.5m",
         "baraccatura_acciaio": f"Profilo secondario Omega o Tubolare 100x50x3 mm in acciaio S355",
         
-        # Inserimento dati montanti timpano
-        "num_montanti_timpano": num_montanti_timpano,
+        # Inserimento dati montanti timpano e longitudinali
+        "num_montanti_timpano_singolo": num_montanti_timpano_singola_facciata,
         "passo_montanti_timpano": round(passo_montanti_timpano, 2),
-        "montante_timpano_legno": montante_timpano_legno,
-        "montante_timpano_acciaio": montante_timpano_acciaio,
-        "montante_timpano_cap": montante_timpano_cap,
+        "ml_per_montante_timpano": ml_per_montante_timpano,
+        "ml_tot_timpani_entrambe": round(ml_tot_timpani_entrambe, 2),
+        
+        "num_montanti_long_singola_parete": num_totale_montanti_long_singola_parete,
+        "passo_montanti_long": round(passo_montanti_long, 2),
+        "ml_tot_montanti_long_entrambe": round(ml_tot_montanti_long_entrambe_pareti, 2),
+
+        "montante_sezione_legno": montante_legno,
+        "montante_sezione_acciaio": montante_acciaio,
+        "montante_sezione_cap": montante_cap,
 
         "campate_controventi_indici": [0, dati_geo['num_campate'] - 1],
         "controventi_copertura_pos": f"Campate di estremità (1ª e ultima campata)",
@@ -365,9 +399,10 @@ def calcola_distinta_elementi(dati):
     mq_copertura = L * sviluppo_falda * 2
     mq_pareti_lunghe = L * h_gronda * 2 
     
-    # Area timpani = 2 facciate * (Area rettangolo inferiore + Area triangolo superiore)
     mq_timpani = 2 * (B * h_gronda + (B * (dati['altezza_colmo'] - h_gronda) / 2))
-    tot_montanti_timpani = dati.get('num_montanti_timpano', 0) * 2
+    
+    tot_montanti_timpani = dati.get('num_montanti_timpano_singolo', 0) * 2
+    tot_montanti_longitudinali = dati.get('num_montanti_long_singola_parete', 0) * 2
 
     return {
         "num_telai": num_telai,
@@ -382,7 +417,8 @@ def calcola_distinta_elementi(dati):
         "mq_copertura": round(mq_copertura, 1),
         "mq_pareti_lunghe": round(mq_pareti_lunghe, 1),
         "mq_timpani": round(mq_timpani, 1),
-        "tot_montanti_timpani": tot_montanti_timpani
+        "tot_montanti_timpani": tot_montanti_timpani,
+        "tot_montanti_longitudinali": tot_montanti_longitudinali
     }
 
 # --- FUNZIONE PER GENERARE IL DOCUMENTO WORD STANDARD ---
@@ -419,19 +455,30 @@ def genera_word_report(dati, distinta):
     doc.add_paragraph(f"Sezione Consigliata: {dati.get('sezione_arcarecci', 'N.D.')}")
     doc.add_paragraph(f"Verifica: {dati.get('verifica_arcarecci', 'N.D.')}")
     
-    doc.add_heading('4. Baraccatura di Parete (Supporto Rivestimento)', level=1)
+    doc.add_heading('4. Baraccatura di Parete e Montanti Antivento', level=1)
     doc.add_paragraph(f"Pannello Parete: {dati.get('tipo_isolante_parete', 'N.D.')} - Spessore: {dati.get('spessore_pannello_parete', 'N.D.')}")
     doc.add_paragraph(f"Legno Lamellare: {dati.get('baraccatura_legno_lamellare', 'N.D.')}")
     doc.add_paragraph(f"Legno Massiccio: {dati.get('baraccatura_legno_massiccio', 'N.D.')}")
     doc.add_paragraph(f"Acciaio: {dati.get('baraccatura_acciaio', 'N.D.')}")
 
-    doc.add_heading('4.1 Pareti Frontali (Timpani) e Montanti Antivento', level=2)
+    doc.add_heading('4.1 Montanti Pareti Frontali (Timpani)', level=2)
     doc.add_paragraph(f"Passo Montanti Verticali: {dati.get('passo_montanti_timpano', 0):.2f} m")
-    doc.add_paragraph(f"Numero Montanti per singola facciata: {dati.get('num_montanti_timpano', 0)}")
-    doc.add_paragraph(f"Totale Montanti per l'intero edificio: {distinta.get('tot_montanti_timpani', 0)}")
-    doc.add_paragraph(f"Sezione Montante Legno: {dati.get('montante_timpano_legno', 'N.D.')}")
-    doc.add_paragraph(f"Sezione Montante Acciaio: {dati.get('montante_timpano_acciaio', 'N.D.')}")
-    doc.add_paragraph(f"Sezione Montante C.a.p.: {dati.get('montante_timpano_cap', 'N.D.')}")
+    doc.add_paragraph(f"Numero Montanti per singola facciata: {dati.get('num_montanti_timpano_singolo', 0)}")
+    
+    # Crea elenco sviluppo montanti
+    ml_list = dati.get('ml_per_montante_timpano', [])
+    sviluppo_str = " | ".join([f"L={ml:.2f}m" for ml in ml_list]) if ml_list else "Nessuno (luce breve)"
+    doc.add_paragraph(f"Sviluppo altezze montanti (da bordo verso centro): {sviluppo_str}")
+    doc.add_paragraph(f"Sviluppo totale montanti timpani (Entrambe le facciate): {dati.get('ml_tot_timpani_entrambe', 0):.2f} ml")
+    
+    doc.add_heading('4.2 Montanti Pareti Longitudinali', level=2)
+    doc.add_paragraph(f"Passo Montanti Verticali: {dati.get('passo_montanti_long', 0):.2f} m")
+    doc.add_paragraph(f"Numero Montanti per singola parete lunga: {dati.get('num_montanti_long_singola_parete', 0)}")
+    doc.add_paragraph(f"Sviluppo totale montanti longitudinali (Entrambe le pareti): {dati.get('ml_tot_montanti_long_entrambe', 0):.2f} ml")
+    
+    doc.add_paragraph(f"\nSezione consigliata montanti (Legno): {dati.get('montante_sezione_legno', 'N.D.')}")
+    doc.add_paragraph(f"Sezione consigliata montanti (Acciaio): {dati.get('montante_sezione_acciaio', 'N.D.')}")
+    doc.add_paragraph(f"Sezione consigliata montanti (C.a.p.): {dati.get('montante_sezione_cap', 'N.D.')}")
 
     doc.add_heading('5. Travi Principali / Portali (Confronto 3 Materiali)', level=1)
     doc.add_paragraph(f"Legno Lamellare: {dati.get('travi_legno', 'N.D.')}")
@@ -549,31 +596,54 @@ def genera_modello_3d(dati):
                 ))
 
     # Aggiunta montanti timpano al modello 3D
-    passo_mont = dati.get('passo_montanti_timpano', 0)
-    num_mont_campata = int(dati.get('num_montanti_timpano', 0) / max(1, num_appoggi - 1))
+    passo_mont_timpano = dati.get('passo_montanti_timpano', 0)
+    num_mont_camp_timpano = int(dati.get('num_montanti_timpano_singolo', 0) / max(1, num_appoggi - 1))
     
-    if passo_mont > 0 and num_mont_campata > 0:
-        x_montanti = []
+    if passo_mont_timpano > 0 and num_mont_camp_timpano > 0:
+        x_montanti_timpano = []
         for x_start in x_pilastri[:-1]:
-            for m in range(1, num_mont_campata + 1):
-                x_m = x_start + m * passo_mont
+            for m in range(1, num_mont_camp_timpano + 1):
+                x_m = x_start + m * passo_mont_timpano
                 if x_m < x_start + (luce_totale / (num_appoggi - 1)) - 0.1:
-                    x_montanti.append(x_m)
+                    x_montanti_timpano.append(x_m)
                     
         for y_fac in [0, y_portali[-1]]:
-            for idx_m, xm in enumerate(x_montanti):
+            for idx_m, xm in enumerate(x_montanti_timpano):
                 if xm <= luce_totale / 2:
                     zm = altezza_gronda + (altezza_colmo - altezza_gronda) * (xm / (luce_totale / 2))
                 else:
                     zm = altezza_colmo - (altezza_colmo - altezza_gronda) * ((xm - luce_totale / 2) / (luce_totale / 2))
                 
-                show_leg_mont = (y_fac == 0 and idx_m == 0)
+                show_leg_mont_timp = (y_fac == 0 and idx_m == 0)
                 fig.add_trace(go.Scatter3d(
                     x=[xm, xm], y=[y_fac, y_fac], z=[0, zm],
                     mode='lines',
                     line=dict(color='cadetblue', width=4),
-                    name='Montanti Timpano' if show_leg_mont else '',
-                    showlegend=show_leg_mont
+                    name='Montanti Timpano' if show_leg_mont_timp else '',
+                    showlegend=show_leg_mont_timp
+                ))
+
+    # Aggiunta montanti longitudinali al modello 3D
+    passo_mont_long = dati.get('passo_montanti_long', 0)
+    num_mont_camp_long = int(dati.get('num_montanti_long_singola_parete', 0) / num_campate) if num_campate > 0 else 0
+    
+    if passo_mont_long > 0 and num_mont_camp_long > 0:
+        y_montanti_long = []
+        for y_start in y_portali[:-1]:
+            for m in range(1, num_mont_camp_long + 1):
+                y_m = y_start + m * passo_mont_long
+                if y_m < y_start + interasse_portali - 0.1:
+                    y_montanti_long.append(y_m)
+                    
+        for x_wall in [0, luce_totale]:
+            for idx_m, ym in enumerate(y_montanti_long):
+                show_leg_mont_long = (x_wall == 0 and idx_m == 0)
+                fig.add_trace(go.Scatter3d(
+                    x=[x_wall, x_wall], y=[ym, ym], z=[0, altezza_gronda],
+                    mode='lines',
+                    line=dict(color='teal', width=4),
+                    name='Montanti Longitudinali' if show_leg_mont_long else '',
+                    showlegend=show_leg_mont_long
                 ))
 
     half_luce = luce_totale / 2.0
@@ -930,7 +1000,7 @@ if 'dati_ultimi' in st.session_state:
         st.download_button(
             label="📄 Scarica Relazione e Distinta Elementi in Word (.docx)",
             data=word_file,
-            file_name=f"Relazione_Predimensionamento_{dati.get('luogo', 'Progetto').replace(' ', '_')}.docx",
+            file_name=f"Relazione_Predimensionamento_{dati.get('luogo', 'Progetto').replace(' ', '_').replace(':', '')}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             type="primary",
             use_container_width=True
@@ -990,24 +1060,43 @@ if 'dati_ultimi' in st.session_state:
         st.warning(dati.get('baraccatura_acciaio', 'N.D.'))
 
     st.markdown("---")
-    st.markdown("### 🏛️ 4.1 Montanti Verticali Antivento (Timpani di Facciata)")
-    st.write(f"Dimensionamento montanti verticali intermedi sulle facciate per il supporto della baraccatura (luce singola campata frontale: {dati.get('luce_totale')/(dati.get('num_appoggi')-1):.2f}m).")
+    st.markdown("### 🏛️ 4.1 Montanti Verticali Antivento (Supporto Baraccatura Pareti)")
     
-    col_m1, col_m2, col_m3 = st.columns(3)
-    col_m1.metric("Montanti per Singolo Timpano", f"{dati.get('num_montanti_timpano', 0)} pz")
-    col_m2.metric("Passo Montanti", f"{dati.get('passo_montanti_timpano', 0):.2f} m")
-    col_m3.metric("Montanti Totali (Fronte + Retro)", f"{distinta.get('tot_montanti_timpani', 0)} pz")
-    
-    if dati.get('num_montanti_timpano', 0) > 0:
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        st.markdown("#### 📐 Pareti Frontali (Timpani)")
+        st.write(f"Luce campata frontale: {dati.get('luce_totale')/(dati.get('num_appoggi')-1):.2f} m")
+        st.write(f"**N° Montanti per singola facciata:** {dati.get('num_montanti_timpano_singolo', 0)}")
+        if dati.get('num_montanti_timpano_singolo', 0) > 0:
+            st.write(f"**Passo d'installazione:** {dati.get('passo_montanti_timpano', 0):.2f} m")
+            
+            ml_list = dati.get('ml_per_montante_timpano', [])
+            sviluppo_str = " | ".join([f"L={ml:.2f}m" for ml in ml_list])
+            st.info(f"**Sviluppo verticale (singoli montanti):**\n{sviluppo_str}")
+            st.write(f"**Sviluppo Totale (Entrambe le facciate):** {dati.get('ml_tot_timpani_entrambe', 0):.2f} ml")
+        else:
+            st.info("💡 Luce sufficientemente ridotta da non richiedere montanti intermedi.")
+
+    with col_m2:
+        st.markdown("#### 📏 Pareti Longitudinali (Lati lunghi)")
+        st.write(f"Interasse portali: {dati.get('interasse_portali', 0):.2f} m")
+        st.write(f"**N° Montanti per singola parete lunga:** {dati.get('num_montanti_long_singola_parete', 0)}")
+        if dati.get('num_montanti_long_singola_parete', 0) > 0:
+            st.write(f"**Passo d'installazione:** {dati.get('passo_montanti_long', 0):.2f} m")
+            st.write(f"**Altezza fissa (gronda):** {dati.get('altezza_gronda', 0):.2f} m")
+            st.info(f"**Sviluppo Totale (Entrambe le pareti lunghe):** {dati.get('ml_tot_montanti_long_entrambe', 0):.2f} ml")
+        else:
+            st.info("💡 Interasse portali entro i 6m, non richiede montanti rompitratta.")
+
+    st.markdown("#### 🪵 Sezioni consigliate per i montanti")
+    if dati.get('num_montanti_timpano_singolo', 0) > 0 or dati.get('num_montanti_long_singola_parete', 0) > 0:
         col_mt1, col_mt2, col_mt3 = st.columns(3)
         with col_mt1:
-            st.success(f"🌲 **Legno:** {dati.get('montante_timpano_legno')}")
+            st.success(f"🌲 **Legno:** {dati.get('montante_sezione_legno')}")
         with col_mt2:
-            st.warning(f"⚙️ **Acciaio:** {dati.get('montante_timpano_acciaio')}")
+            st.warning(f"⚙️ **Acciaio:** {dati.get('montante_sezione_acciaio')}")
         with col_mt3:
-            st.error(f"🏛️ **C.a.p.:** {dati.get('montante_timpano_cap')}")
-    else:
-        st.info("💡 Luce campata sufficientemente ridotta da non richiedere montanti intermedi per la baraccatura.")
+            st.error(f"🏛️ **C.a.p.:** {dati.get('montante_sezione_cap')}")
 
     st.markdown("---")
     st.markdown("### 📐 5. Travi Principali / Portali (Confronto Tecnologico)")
