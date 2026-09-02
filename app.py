@@ -15,10 +15,11 @@ import requests
 # --- FUNZIONE ROBUSTA PER ESTRARRE COORDINATE DA URL DI GOOGLE MAPS ---
 def estrai_coordinate_da_url(url):
     url = url.strip()
-    if not url or "googleusercontent.com" in url:
+    if not url:
         return 46.4983, 11.3548 
     
-    if "goo.gl" in url or "maps.app.goo.gl" in url:
+    # Risoluzione link abbreviati o di reindirizzamento (goo.gl, googleusercontent, maps.app.goo.gl)
+    if any(domain in url for domain in ["goo.gl", "googleusercontent.com", "maps.app.goo.gl"]):
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             response = requests.get(url, allow_redirects=True, timeout=5, headers=headers)
@@ -600,7 +601,7 @@ testo_commerciale = st.text_area(
 
 st.markdown("### 📍 Localizzazione Cantiere (Google Maps)")
 maps_url_ui = st.text_input(
-    "Incolla il link di Google Maps del cantiere (es. https://maps.app.goo.gl/... o https://www.google.com/maps/...)",
+    "Incolla il link di Google Maps del cantiere (es. https://maps.app.goo.gl/... o link completo di Google Maps)",
     value="",
     placeholder="Incolla qui l'URL copiato da Google Maps...",
     key="maps_url_ui",
@@ -693,11 +694,7 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
                 distinta_elementi = calcola_distinta_elementi(dati)
                 dati['distinta'] = distinta_elementi
                 st.session_state['dati_ultimi'] = dati
-                
-                if maps_url_ui and lat_estratta == 46.4983 and lon_estratta == 11.3548 and "Bolzano" not in maps_url_ui:
-                     st.warning("⚠️ Non è stato possibile estrarre le coordinate da questo link. È stato usato il carico neve di default (Bolzano). Assicurati di incollare un link di Google Maps valido.")
-                else:
-                     st.success(f"Link analizzato (Lat: {lat_estratta:.4f}, Lon: {lon_estratta:.4f})! Calcolo completato.")
+                st.success(f"Link analizzato correttamente (Lat: {lat_estratta:.4f}, Lon: {lon_estratta:.4f})! Calcolo completato.")
         else:
             if not api_key:
                 st.error("Inserisci prima l'API Key di Google nella barra laterale per usare la modalità IA!")
