@@ -148,34 +148,52 @@ def esegui_calcolo_deterministico(dati_geo):
     h_legno_cm = int((6 * w_req_cm3 / b_legno_cm) ** 0.5)
     h_legno_cm = max(44, ((h_legno_cm + 3) // 4) * 4) 
 
-    # Dimensionamento Acciaio S355JR
+    # Dimensionamento Acciaio S355JR per travi
     w_el_req_cm3 = (m_ed * 100.0) / 33.8 
     if w_el_req_cm3 > 3500:
         profilo_acciaio = "IPE 600 / HEB 500"
-        pilastro_acciaio = "HEB 400"
+        pilastro_perim_acc = "HEB 300"
+        pilastro_interm_acc = "HEB 450"
     elif w_el_req_cm3 > 2000:
         profilo_acciaio = "IPE 500 / HEA 400"
-        pilastro_acciaio = "HEB 300"
+        pilastro_perim_acc = "HEB 260"
+        pilastro_interm_acc = "HEB 360"
     elif w_el_req_cm3 > 1000:
         profilo_acciaio = "IPE 400 / HEA 300"
-        pilastro_acciaio = "HEB 260"
+        pilastro_perim_acc = "HEB 220"
+        pilastro_interm_acc = "HEB 300"
     else:
         profilo_acciaio = "IPE 330 / HEA 240"
-        pilastro_acciaio = "HEB 200"
+        pilastro_perim_acc = "HEB 180"
+        pilastro_interm_acc = "HEB 240"
 
-    # Dimensionamento C.A.P. (arrotondato ai 5 cm, senza decimali)
+    # Dimensionamento C.A.P.
     h_cap_cm = max(80, ((int(h_legno_cm * 1.2) + 4) // 5) * 5)
     profilo_cap = f"Trave a T rovescia precompressa altezza {h_cap_cm} cm"
 
-    # --- CONNESSIONI E NODI SCALATI SULLE DIMENSIONI GEOMETRICHE ---
-    fattore_geometria = h_legno_cm / 60.0 
+    # --- DIMENSIONAMENTO SEZIONI PILASTRI (DISTINZIONE PERIMETRALI VS INTERMEDI) ---
+    # Pilastri Perimetrali (Altezza Gronda, minore momento d'insieme)
+    h_pil_perim_cm = max(40, ((int(h_legno_cm * 0.70) + 3) // 4) * 4)
+    b_pil_perim_cm = 20
+    
+    # Pilastri Intermedi (Altezza Colmo, carichi doppi dalle campate adiacenti)
+    h_pil_interm_cm = max(52, ((int(h_legno_cm * 1.15) + 3) // 4) * 4)
+    b_pil_interm_cm = 24
 
-    n_bulloni_nodo = max(4, int(v_ed / 35.0) * 2)
-    peso_conn_kg = round((n_bulloni_nodo * 4.5 + 15.0) * max(1.0, fattore_geometria), 1)
-    
-    n_ancoraggi = max(4, int(v_ed / 40.0) * 2)
-    peso_anc_kg = round((n_ancoraggi * 3.5 + 20.0) * max(1.0, fattore_geometria * 0.8), 1)
-    
+    # --- NODI E CONNESSIONI CALCIATI SEPARATAMENTE (PERIMETRALI VS INTERMEDI) ---
+    # Nodi Perimetrali
+    n_bulloni_perim = max(6, int(v_ed / 25.0) * 2)
+    peso_conn_perim_kg = round(n_bulloni_perim * 4.0 + (h_pil_perim_cm * b_pil_perim_cm * 0.025) + 25.0, 1)
+    n_anc_perim = max(4, int(v_ed / 30.0) * 2)
+    peso_anc_perim_kg = round(n_anc_perim * 4.5 + (h_pil_perim_cm * b_pil_perim_cm * 0.03) + 30.0, 1)
+
+    # Nodi Intermedi (Soggetti a reazioni doppie e carichi di punta maggiori)
+    v_ed_interm = v_ed * 1.6
+    n_bulloni_interm = max(12, int(v_ed_interm / 18.0) * 2)
+    peso_conn_interm_kg = round(n_bulloni_interm * 4.5 + (h_pil_interm_cm * b_pil_interm_cm * 0.04) + 65.0, 1)
+    n_anc_interm = max(8, int(v_ed_interm / 22.0) * 2)
+    peso_anc_interm_kg = round(n_anc_interm * 5.5 + (h_pil_interm_cm * b_pil_interm_cm * 0.05) + 75.0, 1)
+
     mq_acciaio = round((luce + h_gronda * 2) * (dati_geo['num_campate'] + 1) * 0.6, 1)
 
     risultati_deterministici = {
@@ -191,9 +209,16 @@ def esegui_calcolo_deterministico(dati_geo):
         "travi_legno": f"Base {b_legno_cm} cm x Altezza {h_legno_cm} cm (Legno Lamellare GL24h - Verificato a flessione e freccia L/300)",
         "travi_acciaio": f"Profilo {profilo_acciaio} in acciaio S355JR (Verificato SLU/SLE)",
         "travi_cap": profilo_cap,
-        "pilastri_legno": f"Sezione 24x{h_legno_cm+4} cm con piastre d'acciaio interne e bulloni",
-        "pilastri_acciaio": f"Profilo {pilastro_acciaio} in acciaio S355JR",
-        "pilastri_cap": f"Pilastro in C.A.P. sezione 40x50 cm con mensola per appoggio trave",
+        # Distinzione Pilastri Legno
+        "pilastri_perimetrali_legno": f"Sezione {b_pil_perim_cm}x{h_pil_perim_cm} cm (H libera in gronda: {h_gronda}m) con piastre e bulloni",
+        "pilastri_intermedi_legno": f"Sezione {b_pil_interm_cm}x{h_pil_interm_cm} cm (H al colmo: {h_colmo}m - Carico doppio da campate adiacenti) con piastre interne e spine",
+        # Distinzione Pilastri Acciaio
+        "pilastri_perimetrali_acciaio": f"Profilo {pilastro_perim_acc} in acciaio S355JR",
+        "pilastri_intermedi_acciaio": f"Profilo {pilastro_interm_acc} in acciaio S355JR",
+        # Distinzione Pilastri CAP
+        "pilastri_perimetrali_cap": f"Pilastro in C.A.P. sezione 40x45 cm con mensola",
+        "pilastri_intermedi_cap": f"Pilastro in C.A.P. sezione 50x60 cm bifacciale con mensole rinforzate per appoggio travi",
+        
         "sezione_arcarecci": f"Profilo scatolare 120x60x4 mm o falda legno 10x20 cm per passo {dati_geo.get('interasse_arcarecci', 1.5)}m",
         "verifica_arcarecci": "Verificato a flessione deviata e freccia SLE (L/200)",
         "baraccatura_legno_lamellare": f"Correnti in legno lamellare GL24h sezione 12x16 cm interasse 1.5m",
@@ -206,12 +231,20 @@ def esegui_calcolo_deterministico(dati_geo):
         "controventi_parete_pos": f"Campate di estremità in corrispondenza dei controventi di falda",
         "controventi_parete_legno": "Diagonali in legno lamellare 16x16 cm con piastre di nodo dedicate",
         "controventi_parete_acciaio": "Croci di sant'andrea in profilati angolari L 80x8 o tubolari strutturali",
+        
+        # Connessioni Distinte Perimetrali e Intermedie
         "conn_trave_pilastro_tipo": "Nodo semi-rigido con piastre frontali interne e spine d'acciaio",
-        "conn_trave_pilastro_elementi": f"N. {n_bulloni_nodo} bulloni classe 8.8 M20 + piastra sp. 20 mm",
-        "conn_trave_pilastro_kg": f"{peso_conn_kg} kg cad.",
-        "conn_pilastro_fondazione_tipo": "Cerniera/Incastro parziale con piastra di base e fazzoletti di irrigidimento",
-        "conn_pilastro_fondazione_elementi": f"N. {n_ancoraggi} tirafondi ad alta resistenza M24 L=800mm",
-        "conn_pilastro_fondazione_kg": f"{peso_anc_kg} kg cad.",
+        "conn_trave_pilastro_perim_elementi": f"N. {n_bulloni_perim} bulloni 8.8 M20 + piastra sp. 16mm",
+        "conn_trave_pilastro_perim_kg": f"{peso_conn_perim_kg} kg cad.",
+        "conn_trave_pilastro_interm_elementi": f"N. {n_bulloni_interm} bulloni 8.8 M24 + piastre multiple sp. 25mm",
+        "conn_trave_pilastro_interm_kg": f"{peso_conn_interm_kg} kg cad.",
+        
+        "conn_pilastro_fondazione_tipo": "Cerniera/Incastro con piastra di base e fazzoletti irrigidimento",
+        "conn_pilastro_fondazione_perim_elementi": f"N. {n_anc_perim} tirafondi M24 L=800mm",
+        "conn_pilastro_fondazione_perim_kg": f"{peso_anc_perim_kg} kg cad.",
+        "conn_pilastro_fondazione_interm_elementi": f"N. {n_anc_interm} tirafondi alta resistenza M30 L=1000mm",
+        "conn_pilastro_fondazione_interm_kg": f"{peso_anc_interm_kg} kg cad.",
+
         "dettaglio_giunto_colmo": "Piastra di colmo sagomata con coprigiunti bullonati a doppio taglio",
         "classe_resistenza_fuoco": "R 60 (Conforme ai requisiti antincendio attività industriali)",
         "mq_intumescente": f"{mq_acciaio} mq",
@@ -299,7 +332,7 @@ def genera_word_report(dati, distinta):
     
     doc.add_heading('2. Distinta Elementi Principali (Computo Quantità)', level=1)
     doc.add_paragraph(f"Numero Telai Principali: {distinta['num_telai']}")
-    doc.add_paragraph(f"Numero Pilastri Totali: {distinta['num_pilastri_totali']} (di cui {distinta['num_pilastri_perimetrali']} perimetrali e {distinta['num_pilastri_interni']} interni)")
+    doc.add_paragraph(f"Numero Pilastri Totali: {distinta['num_pilastri_totali']} (di cui {distinta['num_pilastri_perimetrali']} perimetrali e {distinta['num_pilastri_interni']} intermedi)")
     doc.add_paragraph(f"Numero Travi di Falda: {distinta['num_travi_falda']}")
     doc.add_paragraph(f"File di Arcarecci (sviluppo trasversale): {distinta['num_file_arcarecci']} file")
     doc.add_paragraph(f"Metri Lineari Totali Arcarecci: {distinta['ml_arcarecci']} ml")
@@ -325,9 +358,14 @@ def genera_word_report(dati, distinta):
     doc.add_paragraph(f"C.a.p.: {dati.get('travi_cap', 'N.D.')}")
     
     doc.add_heading('6. Pilastri (Perimetrali e Intermedi)', level=1)
-    doc.add_paragraph(f"Legno Lamellare: {dati.get('pilastri_legno', 'N.D.')}")
-    doc.add_paragraph(f"Acciaio: {dati.get('pilastri_acciaio', 'N.D.')}")
-    doc.add_paragraph(f"C.a.p.: {dati.get('pilastri_cap', 'N.D.')}")
+    doc.add_paragraph("--- PILASTRI PERIMETRALI ---")
+    doc.add_paragraph(f"Legno Lamellare: {dati.get('pilastri_perimetrali_legno', 'N.D.')}")
+    doc.add_paragraph(f"Acciaio: {dati.get('pilastri_perimetrali_acciaio', 'N.D.')}")
+    doc.add_paragraph(f"C.a.p.: {dati.get('pilastri_perimetrali_cap', 'N.D.')}")
+    doc.add_paragraph("--- PILASTRI INTERMEDI ---")
+    doc.add_paragraph(f"Legno Lamellare: {dati.get('pilastri_intermedi_legno', 'N.D.')}")
+    doc.add_paragraph(f"Acciaio: {dati.get('pilastri_intermedi_acciaio', 'N.D.')}")
+    doc.add_paragraph(f"C.a.p.: {dati.get('pilastri_intermedi_cap', 'N.D.')}")
     
     doc.add_heading('7. Stabilizzazione e Controventi', level=1)
     doc.add_paragraph(f"Copertura: {dati.get('controventi_copertura_pos', 'N.D.')}")
@@ -338,10 +376,12 @@ def genera_word_report(dati, distinta):
     doc.add_paragraph(f"  - Opzione Acciaio: {dati.get('controventi_parete_acciaio', 'N.D.')}")
     
     doc.add_heading('8. Dettaglio Connessioni, Nodi e Giunti in Colmo', level=1)
-    doc.add_paragraph(f"Connessione Trave/Pilastro: {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
-    doc.add_paragraph(f"  - Elementi: {dati.get('conn_trave_pilastro_elementi', 'N.D.')} | Peso: {dati.get('conn_trave_pilastro_kg', 'N.D.')}")
-    doc.add_paragraph(f"Connessione Pilastro/Fondazione: {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
-    doc.add_paragraph(f"  - Ancoraggi: {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')} | Peso: {dati.get('conn_pilastro_fondazione_kg', 'N.D.')}")
+    doc.add_paragraph(f"Tipologia Generale Nodo: {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
+    doc.add_paragraph(f"  - Nodi Periferici: {dati.get('conn_trave_pilastro_perim_elementi', 'N.D.')} | Peso: {dati.get('conn_trave_pilastro_perim_kg', 'N.D.')}")
+    doc.add_paragraph(f"  - Nodi Intermedi: {dati.get('conn_trave_pilastro_interm_elementi', 'N.D.')} | Peso: {dati.get('conn_trave_pilastro_interm_kg', 'N.D.')}")
+    doc.add_paragraph(f"Base Pilastri Fondazione:")
+    doc.add_paragraph(f"  - Ancoraggi Perimetrali: {dati.get('conn_pilastro_fondazione_perim_elementi', 'N.D.')} | Peso: {dati.get('conn_pilastro_fondazione_perim_kg', 'N.D.')}")
+    doc.add_paragraph(f"  - Ancoraggi Intermedi: {dati.get('conn_pilastro_fondazione_interm_elementi', 'N.D.')} | Peso: {dati.get('conn_pilastro_fondazione_interm_kg', 'N.D.')}")
     doc.add_paragraph(f"Giunto in Colmo: {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
     
     doc.add_heading('9. Protezione Antincendio', level=1)
@@ -778,7 +818,7 @@ if 'dati_ultimi' in st.session_state:
     st.markdown("### 📋 1. Distinta Elementi Principali (Computo Quantità)")
     c_e1, c_e2, c_e3, c_e4 = st.columns(4)
     c_e1.metric("Telai Principali", f"{distinta['num_telai']} pz")
-    c_e2.metric("Pilastri Totali", f"{distinta['num_pilastri_totali']} pz", f"{distinta['num_pilastri_perimetrali']} Per. | {distinta['num_pilastri_interni']} Int.", delta_color="off")
+    c_e2.metric("Pilastri Totali", f"{distinta['num_pilastri_totali']} pz", f"{distinta['num_pilastri_perimetrali']} Per. | {distinta['num_pilastri_interni']} Intermedi", delta_color="off")
     c_e3.metric("Travi di Falda", f"{distinta['num_travi_falda']} pz")
     c_e4.metric("File Arcarecci", f"{distinta['num_file_arcarecci']} file", f"Tot: {distinta['ml_arcarecci']} ml", delta_color="off")
 
@@ -786,7 +826,7 @@ if 'dati_ultimi' in st.session_state:
     c_e5.metric("Moduli Controvento Cop.", f"{distinta['num_croci_copertura']} croci")
     c_e6.metric("Moduli Controvento Parete", f"{distinta['num_croci_parete']} croci")
     c_e7.metric("Superficie Copertura", f"{distinta['mq_copertura']} mq")
-    c_e8.metric("Superficie Pareti Lunghe", f"{distinta['mq_pareti_lunghe']} mq")
+    c_e8.metric("Superficie Pareti Longitudinali", f"{distinta['mq_pareti_lunghe']} mq")
 
     st.markdown("---")
     st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
@@ -840,13 +880,22 @@ if 'dati_ultimi' in st.session_state:
     col_p1, col_p2, col_p3 = st.columns(3)
     with col_p1:
         st.markdown("#### 🌲 Legno Lamellare")
-        st.success(dati.get('pilastri_legno', 'N.D.'))
+        st.markdown("**Perimetrali (in gronda):**")
+        st.success(dati.get('pilastri_perimetrali_legno', 'N.D.'))
+        st.markdown("**Intermedi (al colmo):**")
+        st.success(dati.get('pilastri_intermedi_legno', 'N.D.'))
     with col_p2:
         st.markdown("#### ⚙️ Acciaio")
-        st.warning(dati.get('pilastri_acciaio', 'N.D.'))
+        st.markdown("**Perimetrali:**")
+        st.warning(dati.get('pilastri_perimetrali_acciaio', 'N.D.'))
+        st.markdown("**Intermedi:**")
+        st.warning(dati.get('pilastri_intermedi_acciaio', 'N.D.'))
     with col_p3:
         st.markdown("#### 🏛️ C.a.p.")
-        st.error(dati.get('pilastri_cap', 'N.D.'))
+        st.markdown("**Perimetrali:**")
+        st.error(dati.get('pilastri_perimetrali_cap', 'N.D.'))
+        st.markdown("**Intermedi:**")
+        st.error(dati.get('pilastri_intermedi_cap', 'N.D.'))
     
     st.markdown("---")
     st.markdown("### 🔗 7. Stabilizzazione e Controventi (Azioni Orizzontali)")
@@ -863,18 +912,22 @@ if 'dati_ultimi' in st.session_state:
         st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
     
     st.markdown("---")
-    st.markdown("### 🔩 8. Dimensionamento Dettagliato Connessioni, Nodi e Giunto in Colmo")
+    st.markdown("### 🔩 8. Dimensionamento Dettagliato Connessioni, Nodi e Giunti in Colmo")
     col_n1, col_n2 = st.columns(2)
     with col_n1:
-        st.markdown("#### 🔗 Connessione Pilastro / Trave di Copertura")
+        st.markdown("#### 🔗 Connessione Pilastro / Trave")
         st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
-        st.write(f"- **Organi di Collegamento:** {dati.get('conn_trave_pilastro_elementi', 'N.D.')}")
-        st.metric("Peso Acciaio Connessione", dati.get('conn_trave_pilastro_kg', 'N.D.'))
+        st.write(f"- **Nodi Perimetrali:** {dati.get('conn_trave_pilastro_perim_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Nodo Perimetrale", dati.get('conn_trave_pilastro_perim_kg', 'N.D.'))
+        st.write(f"- **Nodi Intermedi (Rinforzati):** {dati.get('conn_trave_pilastro_interm_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Nodo Intermedio", dati.get('conn_trave_pilastro_interm_kg', 'N.D.'))
     with col_n2:
         st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
         st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
-        st.write(f"- **Ancoraggi:** {dati.get('conn_pilastro_fondazione_elementi', 'N.D.')}")
-        st.metric("Peso Acciaio Ancoraggi/Piastra", dati.get('conn_pilastro_fondazione_kg', 'N.D.'))
+        st.write(f"- **Ancoraggi Perimetrali:** {dati.get('conn_pilastro_fondazione_perim_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Base Perimetrale", dati.get('conn_pilastro_fondazione_perim_kg', 'N.D.'))
+        st.write(f"- **Ancoraggi Intermedi (Rinforzati):** {dati.get('conn_pilastro_fondazione_interm_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Base Intermedia", dati.get('conn_pilastro_fondazione_interm_kg', 'N.D.'))
     
     if dati.get('tipo_travatura') == "Trave di falda giuntata in colmo":
         st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
