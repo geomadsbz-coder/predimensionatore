@@ -10,13 +10,24 @@ import plotly.graph_objects as go
 import PyPDF2
 import numpy as np
 import re
+import requests
 
 # --- FUNZIONE PER ESTRARRE COORDINATE DA URL DI GOOGLE MAPS ---
 def estrai_coordinate_da_url(url):
-    if not url:
+    url = url.strip()
+    # Verifica link monchi o vuoti
+    if not url or url == "https://maps.app.goo.gl/" or url == "https://maps.app.goo.gl":
         return 46.4983, 11.3548 # Default Bolzano
     
-    # Cerca il pattern tipico di Google Maps '@lat,lon'
+    # Se il link è corto (goo.gl), lo espande seguendo il reindirizzamento
+    if "goo.gl" in url:
+        try:
+            response = requests.head(url, allow_redirects=True, timeout=5)
+            url = response.url # Questo è il link lungo espanso che contiene le coordinate
+        except Exception:
+            pass 
+            
+    # 1. Cerca il pattern tipico di Google Maps '@lat,lon'
     match_at = re.search(r'@([-0-9.]+),([-0-9.]+)', url)
     if match_at:
         try:
@@ -24,7 +35,7 @@ def estrai_coordinate_da_url(url):
         except ValueError:
             pass
             
-    # Cerca il pattern con parametri di ricerca o condivisione 'q=lat,lon' o 'll=lat,lon'
+    # 2. Cerca il pattern con parametri di ricerca 'q=lat,lon' o 'll=lat,lon'
     match_q = re.search(r'[?&](?:q|ll|s_loc)=([-0-9.]+),([-0-9.]+)', url)
     if match_q:
         try:
@@ -32,7 +43,7 @@ def estrai_coordinate_da_url(url):
         except ValueError:
             pass
             
-    # Se l'utente ha incollato direttamente coordinate grezze es. "46.4983, 11.3548"
+    # 3. Se l'utente ha incollato direttamente coordinate grezze es. "46.4983, 11.3548"
     match_raw = re.search(r'([-0-9.]+)\s*,\s*([-0-9.]+)', url)
     if match_raw:
         try:
@@ -43,7 +54,7 @@ def estrai_coordinate_da_url(url):
         except ValueError:
             pass
             
-    return 46.4983, 11.3548 # Fallback default
+    return 46.4983, 11.3548 # Fallback di sicurezza
 
 # --- MOTORE DI CALCOLO STRUTTURALE DETERMINISTICO DA COORDINATE (NTC 2018) ---
 def estrai_parametri_ntc_da_coordinate(lat, lon):
@@ -169,7 +180,7 @@ def esegui_calcolo_deterministico(dati_geo):
         "classe_resistenza_fuoco": "R 60 (Conforme ai requisiti antincendio attività industriali)",
         "mq_intumescente": f"{mq_acciaio} mq",
         "dettaglio_verniciatura": "Primer epossidico anticorrosivo + Vernice intumescente a spessore testata per 60 min",
-        "note_tecniche": f"Predimensionamento deterministico NTC 2018 basato su coordinate GPS (lat: {lat}, lon: {lon}). Altitudine stimata: {altitudine_stimata}m, qsk = {qsk} kN/mq."
+        "note_tecniche": f"Predimensionamento deterministico NTC 2018 basato su coordinate GPS (lat: {lat:.4f}, lon: {lon:.4f}). Altitudine stimata: {altitudine_stimata}m, qsk = {qsk} kN/mq."
     }
     return risultati_deterministici
 
@@ -640,13 +651,17 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
         }
 
         if modalita_deterministica:
-            with st.spinner('Analisi link Google Maps ed esecuzione calcolo deterministico NTC 2018...'):
+            with st.spinner('Estrazione coordinate ed esecuzione calcolo deterministico NTC 2018...'):
                 dati = esegui_calcolo_deterministico(dati_base)
                 dati.update(dati_base)
                 distinta_elementi = calcola_distinta_elementi(dati)
                 dati['distinta'] = distinta_elementi
                 st.session_state['dati_ultimi'] = dati
-                st.success(f"Link Google Maps analizzato (Lat: {lat_estratta}, Lon: {lon_estratta})! Calcolo completato.")
+                
+                if maps_url_ui and lat_estratta == 46.4983 and lon_estratta == 11.3548 and "Bolzano" not in maps_url_ui:
+                     st.warning("⚠️ Non è stato possibile estrarre le coordinate da questo link. È stato usato il carico neve di default (Bolzano). Assicurati di incollare un link di Google Maps completo.")
+                else:
+                     st.success(f"Link analizzato (Lat: {lat_estratta:.4f}, Lon: {lon_estratta:.4f})! Calcolo completato.")
         else:
             if not api_key:
                 st.error("Inserisci prima l'API Key di Google nella barra laterale per usare la modalità IA!")
