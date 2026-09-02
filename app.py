@@ -161,13 +161,15 @@ def esegui_calcolo_deterministico(dati_geo):
         profilo_acciaio = "IPE 330 / HEA 240"
         pilastro_acciaio = "HEB 200"
 
-    h_cap_cm = max(80, ((int(h_legno_cm * 1.2) + 4) // 5) * 5)
-    profilo_cap = f"Trave a T rovescia precompressa altezza {h_cap_cm} cm"
+# --- FATTORE GEOMETRICO LEGATO AD ALTEZZA TRAVI E PILASTRI ---
+    fattore_geometria = h_legno_cm / 60.0 
 
     n_bulloni_nodo = max(4, int(v_ed / 35.0) * 2)
-    peso_conn_kg = round(n_bulloni_nodo * 4.5 + 15.0, 1)
+    peso_conn_kg = round((n_bulloni_nodo * 4.5 + 15.0) * max(1.0, fattore_geometria), 1)
+    
     n_ancoraggi = max(4, int(v_ed / 40.0) * 2)
-    peso_anc_kg = round(n_ancoraggi * 3.5 + 20.0, 1)
+    peso_anc_kg = round((n_ancoraggi * 3.5 + 20.0) * max(1.0, fattore_geometria * 0.8), 1)
+    
     mq_acciaio = round((luce + h_gronda * 2) * (dati_geo['num_campate'] + 1) * 0.6, 1)
 
     risultati_deterministici = {
