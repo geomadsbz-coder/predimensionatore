@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import json
 from docx import Document
+from docx.shared import RGBColor
 import io
 import ezdxf
 import tempfile
@@ -12,15 +13,51 @@ import numpy as np
 import re
 import requests
 
+# --- IMPOSTAZIONI PAGINA E BRANDING WOLFSYSTEM (DA LOGO UFFICIALE) ---
+st.set_page_config(page_title="WolfSystem - Predimensionamento NTC", page_icon="🐺", layout="wide")
+
+st.markdown("""
+    <style>
+    /* Palette colori ufficiale da logo WolfSystem */
+    :root {
+        --wolf-yellow: #FFCC00;
+        --wolf-dark: #555555;
+        --wolf-light: #F9F9F9;
+    }
+    
+    h1, h2, h3 {
+        color: var(--wolf-dark) !important;
+        font-family: 'Arial', sans-serif;
+    }
+    
+    .stButton>button {
+        background-color: var(--wolf-yellow) !important;
+        color: #333333 !important;
+        border-radius: 4px;
+        font-weight: bold;
+        border: none;
+    }
+    .stButton>button:hover {
+        background-color: #E6B800 !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    [data-testid="stSidebar"] {
+        background-color: var(--wolf-light);
+        border-right: 4px solid var(--wolf-yellow);
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- DIZIONARIO DI TRADUZIONE MULTILINGUA (ITALIANO / DEUTSCH) ---
 T = {
     "Italiano": {
-        "title": "Generatore Offerte Tecniche e Dimensionamento IA 🏗️",
+        "title": "WolfSystem s.r.l. - Generatore Offerte Tecniche 🐺",
         "settings": "Impostazioni Motore",
         "lang_select": "🌐 Seleziona Lingua / Sprache wählen",
         "api_key": "Inserisci qui la tua API Key di Google",
         "det_mode": "Motore Deterministico NTC 2018 (No IA)",
-        "det_active": "🟢 Motore Matematico Locale Attivo (Risultati 100% stabili e ripetibili)",
+        "det_active": "🟢 Motore Matematico Locale Attivo (Standard Wolf)",
         "hybrid_active": "🤖 Modalità Ibrida con IA attiva (Richiede API Key)",
         "reset": "🔄 Nuovo Progetto / Reset",
         "analysis_header": "Analisi Capitolato / Appunti di Progetto e File (CAD o PDF)",
@@ -80,15 +117,15 @@ T = {
         "roof_area": "Superficie Copertura",
         "long_wall_area": "Superficie Pareti Longitudinali",
         "gable_wall_area": "Superficie Pareti Frontali (Timpani)",
-        "doc_main_title": "Relazione Tecnica di Predimensionamento e Calcolo (NTC 2018)"
+        "doc_main_title": "Relazione Tecnica di Predimensionamento - Wolf System s.r.l."
     },
     "Deutsch": {
-        "title": "Technischer Angebotsgenerator & KI-Bemessung 🏗️",
+        "title": "WolfSystem s.r.l. - Technischer Angebotsgenerator 🏗️",
         "settings": "Engine-Einstellungen",
         "lang_select": "🌐 Seleziona Lingua / Sprache wählen",
         "api_key": "Geben Sie hier Ihren Google API-Schlüssel ein",
         "det_mode": "Deterministische NTC 2018 Engine (Ohne KI)",
-        "det_active": "🟢 Lokale mathematische Engine aktiv (100% stabile & reproduzierbare Ergebnisse)",
+        "det_active": "🟢 Lokale mathematische Engine aktiv (Wolf Standard)",
         "hybrid_active": "🤖 Hybrider Modus mit KI aktiv (Benötigt API-Schlüssel)",
         "reset": "🔄 Neues Projekt / Zurücksetzen",
         "analysis_header": "Analyse von Leistungsverzeichnis / Projektnotizen & Dateien (CAD oder PDF)",
@@ -148,7 +185,7 @@ T = {
         "roof_area": "Dachfläche",
         "long_wall_area": "Längswandfläche",
         "gable_wall_area": "Giebelwandfläche",
-        "doc_main_title": "Technischer Bericht zur Vorbemessung und Berechnung (NTC 2018)"
+        "doc_main_title": "Technischer Bericht zur Vorbemessung - Wolf System s.r.l."
     }
 }
 
@@ -560,7 +597,8 @@ def genera_word_report(dati, distinta):
     doc = Document()
     
     title_str = T[lingua]["doc_main_title"]
-    doc.add_heading(title_str, 0)
+    title = doc.add_heading(title_str, 0)
+    title.runs[0].font.color.rgb = RGBColor(85, 85, 85) # Grigio scuro corporate
     
     # SEZIONE 1
     head_1 = '1. Parametri Geometrici, Climatici, Sismici e di Configurazione' if lingua == "Italiano" else '1. Geometrische, klimatische, seismische und Konfigurationsparameter'
@@ -824,11 +862,9 @@ def genera_modello_3d(dati):
     return fig
 
 # --- INTERFACCIA UTENTE STREAMLIT ---
-st.set_page_config(page_title="Predimensionamento NTC 2018", layout="wide")
-
-# Sidebar - Configurazione e Selezione Lingua
 with st.sidebar:
-    st.header("⚙️ Impostazioni / Einstellungen")
+    st.markdown("<h2 style='text-align: center; color: #555555;'>Ufficio Tecnico<br>WolfSystem</h2>", unsafe_allow_html=True)
+    st.markdown("---")
     
     # PULSANTE SELEZIONE LINGUA
     lingua_selezionata = st.radio(
