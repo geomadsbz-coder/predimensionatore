@@ -752,7 +752,7 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
                     )
                     prompt = (
                         "Sei un ingegnere strutturista senior esperto in prefabbricazione industriale, NTC 2018. "
-                        "Analizza il testo tecnico e restituisci un objeto JSON valido (senza markdown) con queste chiavi esatte: "
+                        "Analizza il testo tecnico e restituisci un oggetto JSON valido (senza markdown) con queste chiavi esatte: "
                         "luogo, qsk, zona_vento, pressione_vento, zona_sismica, classe_uso, fattore_struttura_q, "
                         "campate_controventi_indici, interasse_arcarecci, sezione_arcarecci, verifica_arcarecci, "
                         "baraccatura_legno_lamellare, baraccatura_legno_massiccio, baraccatura_acciaio, "
@@ -781,6 +781,157 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
                         dati['distinta'] = distinta_elementi
                         st.session_state['dati_ultimi'] = dati
                         st.success("Modello ibrido IA calcolato con successo!")
-http://googleusercontent.com/immersive_entry_chip/0
-http://googleusercontent.com/immersive_entry_chip/1
-http://googleusercontent.com/immersive_entry_chip/2
+                except Exception as e:
+                    st.error(f"Errore durante l'elaborazione con IA: {e}")
+
+if 'dati_ultimi' in st.session_state:
+    dati = st.session_state['dati_ultimi']
+    distinta = dati.get('distinta', calcola_distinta_elementi(dati))
+    st.markdown("---")
+    
+    col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
+    with col_dl2:
+        word_file = genera_word_report(dati, distinta)
+        st.download_button(
+            label="📄 Scarica Relazione e Distinta Elementi in Word (.docx)",
+            data=word_file,
+            file_name=f"Relazione_Predimensionamento_{dati.get('luogo', 'Progetto').replace(' ', '_')}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            type="primary",
+            use_container_width=True
+        )
+    
+    st.markdown("---")
+    st.markdown("### 🌐 Modello 3D Dinamico della Struttura")
+    fig_3d = genera_modello_3d(dati)
+    st.plotly_chart(fig_3d, use_container_width=True)
+    
+    st.markdown("---")
+    st.markdown("### 📋 1. Distinta Elementi Principali (Computo Quantità)")
+    c_e1, c_e2, c_e3, c_e4 = st.columns(4)
+    c_e1.metric("Telai Principali", f"{distinta['num_telai']} pz")
+    c_e2.metric("Pilastri Totali", f"{distinta['num_pilastri_totali']} pz", f"{distinta['num_pilastri_perimetrali']} Per. | {distinta['num_pilastri_interni']} Intermedi", delta_color="off")
+    c_e3.metric("Travi di Falda", f"{distinta['num_travi_falda']} pz")
+    c_e4.metric("File Arcarecci", f"{distinta['num_file_arcarecci']} file", f"Tot: {distinta['ml_arcarecci']} ml", delta_color="off")
+
+    c_e5, c_e6, c_e7, c_e8 = st.columns(4)
+    c_e5.metric("Moduli Controvento Cop.", f"{distinta['num_croci_copertura']} croci")
+    c_e6.metric("Moduli Controvento Parete", f"{distinta['num_croci_parete']} croci")
+    c_e7.metric("Superficie Copertura", f"{distinta['mq_copertura']} mq")
+    c_e8.metric("Superficie Pareti Longitudinali", f"{distinta['mq_pareti_lunghe']} mq")
+
+    st.markdown("---")
+    st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Località / Mappa", dati.get("luogo", "N.D."))
+    c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
+    c3.metric("Zona Vento", dati.get("zona_vento", "N.D."))
+    c4.metric("Pressione Vento", dati.get("pressione_vento", "N.D."))
+    
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric("Azione Sismica", dati.get("zona_sismica", "N.D."))
+    c6.metric("Luce Totale", f"{dati.get('luce_totale')} m")
+    c7.metric("Schema Telaio", f"{dati.get('num_appoggi')} Appoggi")
+    c8.metric("Travatura", dati.get("tipo_travatura", "Bi-falda semplice"))
+    
+    st.info(f"🏗️ **Copertura configurata:** Pannello {dati.get('tipo_isolante')} ({dati.get('spessore_pannello')}) | **Impianto FV:** {dati.get('impianto_fv_desc')} | **Carico Extra:** {dati.get('carico_aggiuntivo', 0.0)} kN/mq")
+    
+    st.markdown("---")
+    st.markdown("### 🪵 3. Arcarecci di Copertura")
+    st.info(f"**Passo Arcarecci:** {dati.get('interasse_arcarecci', 1.5)} m | **Sezione Consigliata:** {dati.get('sezione_arcarecci', 'N.D.')} | **Stato:** {dati.get('verifica_arcarecci', 'Verificato')}")
+    
+    st.markdown("---")
+    st.markdown("### 🧱 4. Baraccatura di Parete (Supporto Rivestimento)")
+    st.write(f"**Pannello Facciata:** {dati.get('tipo_isolante_parete', 'N.D.')} ({dati.get('spessore_pannello_parete', 'N.D.')})")
+    col_b1, col_b2, col_b3 = st.columns(3)
+    with col_b1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.success(dati.get('baraccatura_legno_lamellare', 'N.D.'))
+    with col_b2:
+        st.markdown("#### 🪵 Legno Massiccio")
+        st.success(dati.get('baraccatura_legno_massiccio', 'N.D.'))
+    with col_b3:
+        st.markdown("#### ⚙️ Acciaio")
+        st.warning(dati.get('baraccatura_acciaio', 'N.D.'))
+
+    st.markdown("---")
+    st.markdown("### 📐 5. Travi Principali / Portali (Confronto Tecnologico)")
+    col_t1, col_t2, col_t3 = st.columns(3)
+    with col_t1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.success(dati.get('travi_legno', 'N.D.'))
+    with col_t2:
+        st.markdown("#### ⚙️ Acciaio")
+        st.warning(dati.get('travi_acciaio', 'N.D.'))
+    with col_t3:
+        st.markdown("#### 🏛️ C.a.p.")
+        st.error(dati.get('travi_cap', 'N.D.'))
+    
+    st.markdown("---")
+    st.markdown("### 🏛️ 6. Pilastri (Perimetrali e Intermedi)")
+    col_p1, col_p2, col_p3 = st.columns(3)
+    with col_p1:
+        st.markdown("#### 🌲 Legno Lamellare")
+        st.markdown("**Perimetrali (in gronda):**")
+        st.success(dati.get('pilastri_perimetrali_legno', 'N.D.'))
+        st.markdown("**Intermedi (al colmo):**")
+        st.success(dati.get('pilastri_intermedi_legno', 'N.D.'))
+    with col_p2:
+        st.markdown("#### ⚙️ Acciaio")
+        st.markdown("**Perimetrali:**")
+        st.warning(dati.get('pilastri_perimetrali_acciaio', 'N.D.'))
+        st.markdown("**Intermedi:**")
+        st.warning(dati.get('pilastri_intermedi_acciaio', 'N.D.'))
+    with col_p3:
+        st.markdown("#### 🏛️ C.a.p.")
+        st.markdown("**Perimetrali:**")
+        st.error(dati.get('pilastri_perimetrali_cap', 'N.D.'))
+        st.markdown("**Intermedi:**")
+        st.error(dati.get('pilastri_intermedi_cap', 'N.D.'))
+    
+    st.markdown("---")
+    st.markdown("### 🔗 7. Stabilizzazione e Controventi (Azioni Orizzontali)")
+    col_cv1, col_cv2 = st.columns(2)
+    with col_cv1:
+        st.markdown("#### 🛡️ Controventi di Copertura (Falda)")
+        st.write(f"📍 **Posizionamento:** {dati.get('controventi_copertura_pos', 'N.D.')}")
+        st.info(f"🌲 **Opzione Legno:** {dati.get('controventi_copertura_legno', 'N.D.')}")
+        st.info(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_copertura_acciaio', 'N.D.')}")
+    with col_cv2:
+        st.markdown("#### 🧱 Controventi di Parete (Controventatura)")
+        st.write(f"📍 **Posizionamento:** {dati.get('controventi_parete_pos', 'N.D.')}")
+        st.warning(f"🌲 **Opzione Legno:** {dati.get('controventi_parete_legno', 'N.D.')}")
+        st.warning(f"⚙️ **Opzione Acciaio:** {dati.get('controventi_parete_acciaio', 'N.D.')}")
+    
+    st.markdown("---")
+    st.markdown("### 🔩 8. Dimensionamento Dettagliato Connessioni, Nodi e Giunti in Colmo")
+    col_n1, col_n2 = st.columns(2)
+    with col_n1:
+        st.markdown("#### 🔗 Connessione Pilastro / Trave")
+        st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
+        st.write(f"- **Nodi Perimetrali:** {dati.get('conn_trave_pilastro_perim_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Nodo Perimetrale", dati.get('conn_trave_pilastro_perim_kg', 'N.D.'))
+        st.write(f"- **Nodi Intermedi (Più esili):** {dati.get('conn_trave_pilastro_interm_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Nodo Intermedio", dati.get('conn_trave_pilastro_interm_kg', 'N.D.'))
+    with col_n2:
+        st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
+        st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
+        st.write(f"- **Ancoraggi Perimetrali:** {dati.get('conn_pilastro_fondazione_perim_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Base Perimetrale", dati.get('conn_pilastro_fondazione_perim_kg', 'N.D.'))
+        st.write(f"- **Ancoraggi Intermedi:** {dati.get('conn_pilastro_fondazione_interm_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Base Intermedia", dati.get('conn_pilastro_fondazione_interm_kg', 'N.D.'))
+    
+    if dati.get('tipo_travatura') == "Trave di falda giuntata in colmo":
+        st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
+    
+    st.markdown("### 🔥 9. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
+    with col_f2:
+        st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
+    st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
+    
+    st.markdown("---")
+    st.markdown("### 📝 10. Relazione e Note Tecniche")
+    st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
