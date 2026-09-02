@@ -766,7 +766,21 @@ if st.button("Esegui Dimensionamento e Genera Modello 3D", type="primary"):
                     with st.spinner('Elaborazione calcoli strutturali con IA...'):
                         risposta_ia = model.generate_content(prompt)
                         testo_risposta = risposta_ia.text.strip()
-                        if testo_risposta.startswith("
+                        if testo_risposta.startswith("```json"):
+                            testo_risposta = testo_risposta[7:]
+                        if testo_risposta.startswith("```"):
+                            testo_risposta = testo_risposta[3:]
+                        if testo_risposta.endswith("```"):
+                            testo_risposta = testo_risposta[:-3]
+                        
+                        dati = json.loads(testo_risposta.strip())
+                        dati.update(dati_base)
+                        risultati_strutturali = esegui_calcolo_deterministico(dati)
+                        dati.update(risultati_strutturali)
+                        distinta_elementi = calcola_distinta_elementi(dati)
+                        dati['distinta'] = distinta_elementi
+                        st.session_state['dati_ultimi'] = dati
+                        st.success("Modello ibrido IA calcolato con successo!")
 http://googleusercontent.com/immersive_entry_chip/0
 http://googleusercontent.com/immersive_entry_chip/1
 http://googleusercontent.com/immersive_entry_chip/2
