@@ -177,9 +177,6 @@ def esegui_calcolo_deterministico(dati_geo):
     luogo_str, qsk, zona_vento, press_vento_str, zona_sismica, altitudine_stimata = estrai_parametri_ntc_da_coordinate_e_comune(lat, lon, comune)
     pressione_vento = float(press_vento_str.split()[0])
     
-    # ---------------------------------------------------------
-    # 1. CALCOLO PASSI REALI (ARCARECCI E BARACCATURA)
-    # ---------------------------------------------------------
     spessore_cop = str(dati_geo.get('spessore_pannello', ''))
     tipo_cop = str(dati_geo.get('tipo_isolante', ''))
     
@@ -203,9 +200,6 @@ def esegui_calcolo_deterministico(dati_geo):
     num_campi_parete = math.ceil(h_gronda / max_passo_bar)
     passo_baraccatura = h_gronda / num_campi_parete if num_campi_parete > 0 else max_passo_bar
 
-    # ---------------------------------------------------------
-    # 2. SVILUPPO LINEARE ESATTO BARACCATURA
-    # ---------------------------------------------------------
     num_file_long = int(h_gronda / passo_baraccatura)
     ml_baraccatura_long_singola = num_file_long * lunghezza_edificio
     ml_baraccatura_long_tot = ml_baraccatura_long_singola * 2
@@ -224,9 +218,6 @@ def esegui_calcolo_deterministico(dati_geo):
     ml_baraccatura_timpani_tot = ml_baraccatura_timpani_singolo * 2
     ml_tot_baraccatura = ml_baraccatura_long_tot + ml_baraccatura_timpani_tot
 
-    # ---------------------------------------------------------
-    # 3. DIMENSIONAMENTO ARCARECCI (In Luce vs Sopra)
-    # ---------------------------------------------------------
     g1, g2 = 0.15, 0.25
     if "Presente" in dati_geo.get('impianto_fv_desc', ''): g2 += 0.20
     g2 += dati_geo.get('carico_aggiuntivo', 0.0)
@@ -244,9 +235,6 @@ def esegui_calcolo_deterministico(dati_geo):
     elif W_req_arc < 85: sez_arc = "Tubolare 150x75x4 / IPE 140"
     else: sez_arc = "IPE 180"
 
-    # ---------------------------------------------------------
-    # 4. DIMENSIONAMENTO TRAVE PRINCIPALE / CAPRIATE / RETICOLARI
-    # ---------------------------------------------------------
     q_ed_portale = interasse * q_tot_copertura_mq
     luce_campata = luce_totale / (num_appoggi - 1) if num_appoggi >= 3 else luce_totale
     
@@ -264,7 +252,7 @@ def esegui_calcolo_deterministico(dati_geo):
     if categoria_struttura == "Capriate":
         if N_max_truss < 150: sez_catena_L, sez_punt_L, sez_mon_L, sez_saet_L = "20x24 cm", "20x24 cm", "20x20 cm", "16x16 cm"
         elif N_max_truss < 300: sez_catena_L, sez_punt_L, sez_mon_L, sez_saet_L = "24x28 cm", "24x28 cm", "24x24 cm", "20x20 cm"
-        else: sez_catena_L, sez_punt_L, sez_mon_L, sez_saet_L = "24x32 cm (o doppia catena)", "24x32 cm", "24x24 cm", "20x20 cm"
+        else: sez_catena_L, sez_punt_L, sez_mon_L, sez_saet_L = "24x32 cm", "24x32 cm", "24x24 cm", "20x20 cm"
 
         if N_max_truss < 150: sez_catena_A, sez_punt_A, sez_mon_A, sez_saet_A = "Tubolare 100x100x4", "Tubolare 100x100x4", "Tubolare 80x80x3", "Tubolare 80x80x3"
         elif N_max_truss < 300: sez_catena_A, sez_punt_A, sez_mon_A, sez_saet_A = "Tubolare 120x120x5", "Tubolare 120x120x5", "Tubolare 100x100x4", "Tubolare 80x80x4"
@@ -276,15 +264,12 @@ def esegui_calcolo_deterministico(dati_geo):
         L_saettone = math.sqrt((luce_totale/4)**2 + (H_truss/2)**2)
 
         def build_capriata_desc(s_cat, s_punt, s_mon, s_saet):
-            dett = f"• Catena Inferiore (Trazione): 1x {L_catena:.2f}m | Sez. {s_cat}\n"
-            dett += f"• Puntoni Sup. (Compressione): 2x {L_puntone:.2f}m | Sez. {s_punt}\n"
+            dett = f"• Catena Inferiore: 1x {L_catena:.2f}m | Sez. {s_cat}\n"
+            dett += f"• Puntoni Sup.: 2x {L_puntone:.2f}m | Sez. {s_punt}\n"
             if tipo_travatura in ["Con Monaco", "Classica o alla Palladiana", "Composta o a doppia catena"]:
-                dett += f"• Monaco Verticale: 1x {L_monaco:.2f}m | Sez. {s_mon}\n"
+                dett += f"• Monaco: 1x {L_monaco:.2f}m | Sez. {s_mon}\n"
             if tipo_travatura in ["Classica o alla Palladiana", "Composta o a doppia catena"]:
-                dett += f"• Saettoni Diagonali: 2x {L_saettone:.2f}m | Sez. {s_saet}\n"
-            if tipo_travatura == "Composta o a doppia catena":
-                L_catena_sup = luce_totale / 2
-                dett += f"• Catena Superiore Rialzata: 1x {L_catena_sup:.2f}m | Sez. {s_cat}\n"
+                dett += f"• Saettoni: 2x {L_saettone:.2f}m | Sez. {s_saet}\n"
             return dett
 
         travi_legno_out = build_capriata_desc(sez_catena_L, sez_punt_L, sez_mon_L, sez_saet_L)
@@ -293,8 +278,8 @@ def esegui_calcolo_deterministico(dati_geo):
 
     elif categoria_struttura == "Travi Reticolari":
         if N_max_truss < 250: sez_corr_A, sez_diag_A = "Tubolare 120x120x5", "Tubolare 80x80x4"
-        elif N_max_truss < 500: sez_corr_A, sez_diag_A = "Tubolare 150x150x6 / HEA 160", "Tubolare 100x100x5"
-        else: sez_corr_A, sez_diag_A = "Tubolare 200x200x8 / HEA 220", "Tubolare 120x120x6"
+        elif N_max_truss < 500: sez_corr_A, sez_diag_A = "Tubolare 150x150x6", "Tubolare 100x100x5"
+        else: sez_corr_A, sez_diag_A = "Tubolare 200x200x8", "Tubolare 120x120x6"
 
         if N_max_truss < 250: sez_corr_L, sez_diag_L = "GL24h 20x24 cm", "GL24h 16x16 cm"
         elif N_max_truss < 500: sez_corr_L, sez_diag_L = "GL24h 24x32 cm", "GL24h 20x20 cm"
@@ -303,25 +288,21 @@ def esegui_calcolo_deterministico(dati_geo):
         num_campi = max(4, int(luce_totale / 3.0))
         if num_campi % 2 != 0: num_campi += 1 
         L_campo = luce_totale / num_campi
-
         L_corr_inf = luce_totale
         L_corr_sup = 2 * math.sqrt((luce_totale/2)**2 + H_truss**2)
         H_medio = H_truss / 2
         L_diag = math.sqrt(L_campo**2 + H_medio**2)
-        
         num_diag = num_campi * 2 if tipo_travatura == "Travatura Long" else num_campi
         if tipo_travatura == "Travatura Vierendeel": num_diag = 0
-
         num_montanti = num_campi - 1
-        L_montanti_tot = sum([H_truss * (i*L_campo / (luce_totale/2)) if i*L_campo <= luce_totale/2 else H_truss * ((luce_totale - i*L_campo) / (luce_totale/2)) for i in range(1, num_campi)])
 
         def build_reticolare_desc(s_corr, s_diag):
-            dett = f"• Corrente Inferiore: L = {L_corr_inf:.2f}m | Sez. {s_corr}\n"
-            dett += f"• Corrente Superiore: L = {L_corr_sup:.2f}m | Sez. {s_corr}\n"
+            dett = f"• Corrente Inf: L = {L_corr_inf:.2f}m | Sez. {s_corr}\n"
+            dett += f"• Corrente Sup: L = {L_corr_sup:.2f}m | Sez. {s_corr}\n"
             if num_montanti > 0 and tipo_travatura != "Travatura Warren":
-                dett += f"• Montanti Verticali (x{num_montanti}): Sviluppo tot = {L_montanti_tot:.2f}m | Sez. {s_diag}\n"
+                dett += f"• Montanti (x{num_montanti}) | Sez. {s_diag}\n"
             if num_diag > 0:
-                dett += f"• Diagonali (x{num_diag}): L media = {L_diag:.2f}m | Sez. {s_diag}\n"
+                dett += f"• Diagonali (x{num_diag}) | Sez. {s_diag}\n"
             return dett
 
         travi_legno_out = build_reticolare_desc(sez_corr_L, sez_diag_L)
@@ -343,13 +324,10 @@ def esegui_calcolo_deterministico(dati_geo):
         h_cap_cm = max(80, ((int(h_legno_cm * 1.2) + 4) // 5) * 5)
         profilo_cap = f"Trave a T rovescia precompressa altezza {h_cap_cm} cm"
 
-        travi_legno_out = f"Base {b_legno_cm} cm x Altezza {h_legno_cm} cm (Legno Lamellare GL24h)"
-        travi_acciaio_out = f"Profilo {profilo_acciaio} in acciaio S355JR"
+        travi_legno_out = f"Base {b_legno_cm} cm x Altezza {h_legno_cm} cm (GL24h)"
+        travi_acciaio_out = f"Profilo {profilo_acciaio} S355JR"
         travi_cap_out = profilo_cap
 
-    # ---------------------------------------------------------
-    # 5. OTTIMIZZAZIONE SNELLA PILASTRI (Stress & Drift Limiti)
-    # ---------------------------------------------------------
     q_w = pressione_vento * interasse
     M_base_vento = (q_w * h_gronda**2) / 2
     E_legno = 1150 
@@ -451,14 +429,21 @@ def esegui_calcolo_deterministico(dati_geo):
         "controventi_copertura_legno": "Tiranti tondi Ø 20 mm", "controventi_copertura_acciaio": "Tubolari incrociati Ø 89x4 mm",
         "controventi_parete_pos": "Campate di estremità",
         "controventi_parete_legno": "Diagonali GL 16x16 cm", "controventi_parete_acciaio": "Croci di Sant'Andrea L 80x8",
+        # Ristabilite connessioni e dettagli esatti
         "conn_trave_pilastro_tipo": "Nodo semi-rigido con piastre",
-        "conn_trave_pilastro_perim_elementi": "N. 6 bulloni 8.8 M20", "conn_trave_pilastro_perim_kg": "45.0 kg",
-        "conn_trave_pilastro_interm_elementi": "N. 4 bulloni 8.8 M20", "conn_trave_pilastro_interm_kg": "32.0 kg",
+        "conn_trave_pilastro_perim_elementi": f"N. {n_bulloni_perim} bulloni 8.8 M20",
+        "conn_trave_pilastro_perim_kg": f"{peso_conn_perim_kg} kg",
+        "conn_trave_pilastro_interm_elementi": f"N. {n_bulloni_interm} bulloni 8.8 M20",
+        "conn_trave_pilastro_interm_kg": f"{peso_conn_interm_kg} kg",
         "conn_pilastro_fondazione_tipo": "Cerniera/Incastro",
-        "conn_pilastro_fondazione_perim_elementi": "N. 4 tirafondi M24", "conn_pilastro_fondazione_perim_kg": "38.0 kg",
-        "conn_pilastro_fondazione_interm_elementi": "N. 4 tirafondi M24", "conn_pilastro_fondazione_interm_kg": "35.0 kg",
-        "dettaglio_giunto_colmo": "Piastra di colmo bullonata", "classe_resistenza_fuoco": "R 60",
-        "mq_intumescente": f"{mq_acciaio} mq", "dettaglio_verniciatura": "Primer + Intumescente R60",
+        "conn_pilastro_fondazione_perim_elementi": f"N. {n_anc_perim} tirafondi M24",
+        "conn_pilastro_fondazione_perim_kg": f"{peso_anc_perim_kg} kg",
+        "conn_pilastro_fondazione_interm_elementi": f"N. {n_anc_interm} tirafondi M24",
+        "conn_pilastro_fondazione_interm_kg": f"{peso_anc_interm_kg} kg",
+        "dettaglio_giunto_colmo": "Piastra di colmo bullonata",
+        "classe_resistenza_fuoco": "R 60",
+        "mq_intumescente": f"{mq_acciaio} mq",
+        "dettaglio_verniciatura": "Primer + Intumescente R60",
         "note_tecniche": f"Calcolo esatto NTC 2018. L={luce_totale}m, H_truss={H_truss:.2f}m."
     }
     return risultati_deterministici
@@ -515,23 +500,38 @@ def calcola_distinta_elementi(dati):
         "tot_montanti_longitudinali": tot_montanti_longitudinali
     }
 
-# --- MODULO LOGISTICA E CALCOLO VIAGGI DI TRASPORTO (VENETA TRASPORTI & FLOTTA DEDICATA) ---
+# --- MODULO LOGISTICA AGGIORNATO (REGOLE DI TRASPORTO SPECIFICHE) ---
 def calcola_logistica_trasporti(dati, distinta):
     luce = dati['luce_totale']
-    lunghezza = dati['lunghezza_edificio']
     h_colmo = dati['altezza_colmo']
     h_gronda = dati['altezza_gronda']
     num_telai = distinta['num_telai']
     num_pilastri = distinta['num_pilastri_totali']
+     categoria_struttura = dati.get('categoria_struttura', 'Portali ad anima piena')
+    tipo_travatura = dati.get('tipo_travatura', 'Bi-falda semplice')
     
-    # 1. Analisi ingombri in lunghezza per elementi principali (travi / capriate / reticolari)
-    max_lunghezza_trave = max(luce, math.sqrt((luce/2)**2 + (h_colmo - h_gronda)**2))
-    
+    sviluppo_falda = math.sqrt((luce/2)**2 + (h_colmo - h_gronda)**2)
+
+    # Regola 2 & 4: Calcolo lunghezza di trasporto per le travi principali
+    if categoria_struttura == "Portali ad anima piena":
+        if "giuntata in colmo" in tipo_travatura.lower():
+            # Regola 2: Giuntata in colmo -> trasporto a metà falda
+            max_lunghezza_trave = sviluppo_falda / 2.0
+        else:
+            # Regola 4: Bi-falda semplice o curva -> trasporto in pezzo unico (intera falda)
+            max_lunghezza_trave = sviluppo_falda
+    elif categoria_struttura in ["Capriate", "Travi Reticolari"]:
+        # Regola 3: Assemblate in cantiere -> trasporto dei singoli pezzi (profilati standard entro 12-13.5m)
+        max_lunghezza_trave = 12.0
+    else:
+        max_lunghezza_trave = sviluppo_falda
+
+    # Selezione mezzo e viaggi travi in base alle regole economiche e flotta Veneta Trasporti
     if max_lunghezza_trave <= 13.5:
-        mezzo_travi = "Bilico standard 13,5m (Convenzionale)"
-        viaggi_travi = math.ceil(num_telai * 2 / 4) # 4 travi per viaggio
+        mezzo_travi = "Bilico standard 13,5m (Convenzionale economico)"
+        viaggi_travi = math.ceil(num_telai * 2 / 4) # 4 pezzi per carico
     elif max_lunghezza_trave <= 16.0:
-        mezzo_travi = "Bilico standard 16m (Convenzionale allungato)"
+        mezzo_travi = "Bilico standard 16m (Allungato)"
         viaggi_travi = math.ceil(num_telai * 2 / 4)
     elif max_lunghezza_trave <= 19.0:
         mezzo_travi = "Bilico speciale allungabile 19m (Eccezionale)"
@@ -543,30 +543,26 @@ def calcola_logistica_trasporti(dati, distinta):
         mezzo_travi = "Bilico speciale 33,5m (Eccezionale con autorizzazione)"
         viaggi_travi = num_telai * 2
     else:
-        mezzo_travi = "Bilico speciale oltre 33,5m (Eccezionale con scorta tecnica)"
+        mezzo_travi = "Bilico speciale >33,5m (Eccezionale con scorta tecnica)"
         viaggi_travi = num_telai * 2
 
-    # 2. Analisi Pilastri (in base all'altezza massima)
+    # Pilastri
     max_h_pilastro = max(h_gronda, h_colmo)
     if max_h_pilastro <= 13.5:
         mezzo_pilastri = "Bilico standard 13,5m / 16m"
-        viaggi_pilastri = math.ceil(num_pilastri / 8) # ~8 pilastri per carico
+        viaggi_pilastri = math.ceil(num_pilastri / 8)
     else:
         mezzo_pilastri = "Bilico speciale allungabile (19m - 25m)"
         viaggi_pilastri = math.ceil(num_pilastri / 4)
 
-    # 3. Arcarecci, Baraccatura e Montanti (Profilati e barre in pacchi)
+    # Arcarecci e profili
     ml_tot_profili = distinta['ml_arcarecci'] + dati.get('ml_baraccatura_tot', 0) + dati.get('ml_tot_timpani_entrambe', 0) + dati.get('ml_tot_montanti_long_entrambe', 0)
-    peso_profili_kg = ml_tot_profili * 9.5 # stima media kg/ml
-    viaggi_profili = math.ceil(peso_profili_kg / 24000.0) # 24 ton carico utile bilico standard
-    viaggi_profili = max(1, viaggi_profili)
+    peso_profili_kg = ml_tot_profili * 9.5 
+    viaggi_profili = max(1, math.ceil(peso_profili_kg / 24000.0))
 
-    # 4. Pannelli di rivestimento (Copertura e Pareti) e Controventi
+    # Pannelli
     mq_tot_rivestimenti = distinta['mq_copertura'] + distinta['mq_pareti_lunghe'] + distinta['mq_timpani']
-    viaggi_pannelli = math.ceil(mq_tot_rivestimenti / 550.0) # ~550 mq di pannello coibentato per bilico standard (volume)
-    viaggi_pannelli = max(1, viaggi_pannelli)
-
-    # 5. Accessori, Connessioni, Bulloneria, Zanche (1 viaggio dedicato o accorpato)
+    viaggi_pannelli = max(1, math.ceil(mq_tot_rivestimenti / 550.0))
     viaggi_accessori = 1
 
     tot_viaggi = viaggi_travi + viaggi_pilastri + viaggi_profili + viaggi_pannelli + viaggi_accessori
@@ -607,18 +603,18 @@ def genera_word_report(dati, distinta, logistica):
     doc.add_paragraph(f"File di Arcarecci: {distinta['num_file_arcarecci']} file | Metri Lineari: {distinta['ml_arcarecci']} ml")
     doc.add_paragraph(f"Superficie Copertura: {distinta['mq_copertura']} mq | Pareti: {distinta['mq_pareti_lunghe']} mq | Timpani: {distinta['mq_timpani']} mq")
 
-    doc.add_heading('3. Piano Logistico e Calcolo Viaggi di Trasporto (Ottimizzazione Economica)', level=1)
+    doc.add_heading('3. Piano Logistico e Calcolo Viaggi di Trasporto (Flotta Veneta Trasporti)', level=1)
     doc.add_paragraph(f"Numero Viaggi Totali Stimati: {logistica['tot_viaggi']} viaggi")
-    doc.add_paragraph(f"- Struttura Principale (L max {logistica['max_lunghezza_trave']}m): {logistica['viaggi_travi']} viaggi con {logistica['mezzo_travi']}")
+    doc.add_paragraph(f"- Struttura Principale (L calc. max {logistica['max_lunghezza_trave']}m): {logistica['viaggi_travi']} viaggi con {logistica['mezzo_travi']}")
     doc.add_paragraph(f"- Pilastri Strutturali: {logistica['viaggi_pilastri']} viaggi con {logistica['mezzo_pilastri']}")
-    doc.add_paragraph(f"- Arcarecci, Baraccatura e Montanti ({logistica['ml_tot_profili']} ml): {logistica['viaggi_profili']} viaggi con Bilico standard 13,5m/16m")
+    doc.add_paragraph(f"- Arcarecci, Baraccatura e Montanti ({logistica['ml_tot_profili']} ml): {logistica['viaggi_profili']} viaggi con Bilico standard")
     doc.add_paragraph(f"- Pannelli Coibentati e Copertura ({logistica['mq_tot_rivestimenti']} mq): {logistica['viaggi_pannelli']} viaggi con Bilico standard (volume)")
     doc.add_paragraph(f"- Accessori, Connessioni e Bulloneria: {logistica['viaggi_accessori']} viaggio dedicato")
 
     doc.add_heading('4. Arcarecci di Copertura e Baraccatura', level=1)
     doc.add_paragraph(f"Passo Arcarecci: {dati.get('passo_arcarecci_calc', 1.5):.2f} m | Sezione: {dati.get('sezione_arcarecci', 'N.D.')}")
     doc.add_paragraph(f"Passo Baraccatura Parete: {dati.get('passo_baraccatura_calc', 2.0):.2f} m | ML Totali: {dati.get('ml_baraccatura_tot', 0)} ml")
-    doc.add_paragraph(f"Montanti Timpani (Entrambe facciate): {dati.get('ml_tot_timpani_entrambe', 0):.2f} ml | Montanti Longitudinali: {dati.get('ml_tot_montanti_long_entrambe', 0):.2f} ml")
+    doc.add_paragraph(f"Montanti Timpani: {dati.get('ml_tot_timpani_entrambe', 0):.2f} ml | Montanti Longitudinali: {dati.get('ml_tot_montanti_long_entrambe', 0):.2f} ml")
 
     doc.add_heading('5. Struttura Principale (Dimensionamento Elementi)', level=1)
     if dati.get('categoria_struttura') in ["Capriate", "Travi Reticolari"]:
@@ -629,13 +625,17 @@ def genera_word_report(dati, distinta, logistica):
         doc.add_paragraph(f"Acciaio: {dati.get('travi_acciaio', 'N.D.')}")
         doc.add_paragraph(f"C.a.p.: {dati.get('travi_cap', 'N.D.')}")
     
-    doc.add_heading('6. Pilastri e Connessioni', level=1)
-    doc.add_paragraph(f"Pilastri Perimetrali (Legno): {dati.get('pilastri_perimetrali_legno', 'N.D.')}")
-    doc.add_paragraph(f"Pilastri Perimetrali (Acciaio): {dati.get('pilastri_perimetrali_acciaio', 'N.D.')}")
-    doc.add_paragraph(f"Connessioni Trave-Pilastro: {dati.get('conn_trave_pilastro_tipo', 'N.D.')} ({dati.get('conn_trave_pilastro_perim_elementi', 'N.D.')})")
-    doc.add_paragraph(f"Ancoraggi di Base: {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')} ({dati.get('conn_pilastro_fondazione_perim_elementi', 'N.D.')})")
+    doc.add_heading('6. Connessioni, Nodi e Dettagli d’Ancoraggio', level=1)
+    doc.add_paragraph(f"Nodo Trave-Pilastro: {dati.get('conn_trave_pilastro_tipo')} | Perimetrali: {dati.get('conn_trave_pilastro_perim_elementi')} ({dati.get('conn_trave_pilastro_perim_kg')})")
+    doc.add_paragraph(f"Nodi Intermedi: {dati.get('conn_trave_pilastro_interm_elementi')} ({dati.get('conn_trave_pilastro_interm_kg')})")
+    doc.add_paragraph(f"Ancoraggi di Base: {dati.get('conn_pilastro_fondazione_tipo')} | Perimetrali: {dati.get('conn_pilastro_fondazione_perim_elementi')} ({dati.get('conn_pilastro_fondazione_perim_kg')})")
+    doc.add_paragraph(f"Ancoraggi Intermedi: {dati.get('conn_pilastro_fondazione_interm_elementi')} ({dati.get('conn_pilastro_fondazione_interm_kg')})")
+    if "giuntata" in dati.get('tipo_travatura', '').lower():
+        doc.add_paragraph(f"Dettaglio Giunto in Colmo: {dati.get('dettaglio_giunto_colmo')}")
 
-    doc.add_heading('7. Note Tecniche', level=1)
+    doc.add_heading('7. Protezione Antincendio e Note', level=1)
+    doc.add_paragraph(f"Classe Resistenza al Fuoco: {dati.get('classe_resistenza_fuoco')} | Superficie Acciaio: {dati.get('mq_intumescente')}")
+    doc.add_paragraph(f"Ciclo Verniciatura: {dati.get('dettaglio_verniciatura')}")
     doc.add_paragraph(dati.get('note_tecniche', 'N.D.'))
     
     file_stream = io.BytesIO()
@@ -646,7 +646,6 @@ def genera_word_report(dati, distinta, logistica):
 # --- FUNZIONE PER GENERARE IL MODELLO 3D DINAMICO ---
 def genera_modello_3d(dati):
     fig = go.Figure()
-    
     luce_totale = dati.get('luce_totale', 39.6)
     altezza_gronda = dati.get('altezza_gronda', 9.0)
     altezza_colmo = dati.get('altezza_colmo', 12.21)
@@ -974,10 +973,10 @@ if 'dati_ultimi' in st.session_state:
         st.download_button(label="📄 Scarica Relazione, Computo e Piano Logistico in Word (.docx)", data=word_file, file_name=f"Relazione_Logistica_{dati.get('luogo', 'Progetto').replace(' ', '_').replace(':', '')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", type="primary", use_container_width=True)
     
     st.markdown("---")
-    st.markdown("### 🚚 Piano Logistico e Calcolo Viaggi di Trasporto (Flotta Specializzata)")
+    st.markdown("### 🚚 Piano Logistico e Calcolo Viaggi di Trasporto (Flotta Veneta Trasporti)")
     c_l1, c_l2, c_l3 = st.columns(3)
     c_l1.metric("Totale Viaggi Stimati", f"{logistica['tot_viaggi']} Viaggi", "Ottimizzato per Costo/Impatto", delta_color="off")
-    c_l2.metric("Mezzo Travi / Capriate", logistica['mezzo_travi'], f"N° {logistica['viaggi_travi']} Viaggi (L max: {logistica['max_lunghezza_trave']}m)")
+    c_l2.metric("Mezzo Travi / Capriate", logistica['mezzo_travi'], f"N° {logistica['viaggi_travi']} Viaggi (L calc: {logistica['max_lunghezza_trave']}m)")
     c_l3.metric("Mezzo Pilastri", logistica['mezzo_pilastri'], f"N° {logistica['viaggi_pilastri']} Viaggi", delta_color="off")
 
     c_l4, c_l5, c_l6 = st.columns(3)
@@ -1107,16 +1106,37 @@ if 'dati_ultimi' in st.session_state:
     with col_cv2:
         st.markdown("#### 🧱 Controventi di Parete")
         st.warning(f"Legno: {dati.get('controventi_parete_legno')} | Acciaio: {dati.get('controventi_parete_acciaio')}")
-    
+
+    # Ripristinate e re-inserite le sezioni Connessioni e Antincendio a video
     st.markdown("---")
-    st.markdown("### 🔩 8. Connessioni e Requisiti Antincendio")
+    st.markdown("### 🔩 8. Dimensionamento Dettagliato Connessioni, Nodi e Giunti in Colmo")
     col_n1, col_n2 = st.columns(2)
     with col_n1:
-        st.info(f"**Nodo Trave-Pilastro:** {dati.get('conn_trave_pilastro_tipo')} ({dati.get('conn_trave_pilastro_perim_elementi')})")
-        st.warning(f"**Ancoraggi Fondazione:** {dati.get('conn_pilastro_fondazione_tipo')} ({dati.get('conn_pilastro_fondazione_perim_elementi')})")
+        st.markdown("#### 🔗 Connessione Pilastro / Trave")
+        st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
+        st.write(f"- **Nodi Perimetrali:** {dati.get('conn_trave_pilastro_perim_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Nodo Perimetrale", dati.get('conn_trave_pilastro_perim_kg', 'N.D.'))
+        st.write(f"- **Nodi Intermedi:** {dati.get('conn_trave_pilastro_interm_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Nodo Intermedio", dati.get('conn_trave_pilastro_interm_kg', 'N.D.'))
     with col_n2:
-        st.metric("Protezione Antincendio", dati.get('classe_resistenza_fuoco'), f"Sup: {dati.get('mq_intumescente')}")
+        st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
+        st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
+        st.write(f"- **Ancoraggi Perimetrali:** {dati.get('conn_pilastro_fondazione_perim_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Base Perimetrale", dati.get('conn_pilastro_fondazione_perim_kg', 'N.D.'))
+        st.write(f"- **Ancoraggi Intermedi:** {dati.get('conn_pilastro_fondazione_interm_elementi', 'N.D.')}")
+        st.metric("Peso Acciaio Base Intermedia", dati.get('conn_pilastro_fondazione_interm_kg', 'N.D.'))
+    
+    if "giuntata" in dati.get('tipo_travatura', '').lower():
+        st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
+
+    st.markdown("### 🔥 9. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
+    with col_f2:
+        st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
+    st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
     
     st.markdown("---")
-    st.markdown("### 📝 9. Note Tecniche")
+    st.markdown("### 📝 10. Note Tecniche")
     st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
