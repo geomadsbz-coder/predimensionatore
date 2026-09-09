@@ -254,6 +254,12 @@ def esegui_calcolo_deterministico(dati_geo):
     if H_truss < 0.5: H_truss = luce_totale / 10.0 
     N_max_truss = m_ed / H_truss
 
+    classe_fuoco = dati_geo.get('classe_fuoco', 'R 60')
+    fuoco_add = 0
+    if "R 60" in classe_fuoco: fuoco_add = 2
+    elif "R 90" in classe_fuoco: fuoco_add = 4
+    elif "R 120" in classe_fuoco: fuoco_add = 6
+
     if categoria_struttura == "Capriate":
         if N_max_truss < 150: sez_catena_L, sez_punt_L, sez_mon_L, sez_saet_L = "20x24 cm", "20x24 cm", "20x20 cm", "16x16 cm"
         elif N_max_truss < 300: sez_catena_L, sez_punt_L, sez_mon_L, sez_saet_L = "24x28 cm", "24x28 cm", "24x24 cm", "20x20 cm"
@@ -315,10 +321,12 @@ def esegui_calcolo_deterministico(dati_geo):
         travi_cap_out = "N.D."
 
     else:
-        b_legno_cm = 20 
+        b_legno_cm = 20 + (fuoco_add * 2 if "R 0" not in classe_fuoco else 0)
         w_req_cm3 = (m_ed * 1e6) / 14500.0  
         h_legno_cm = int((6 * w_req_cm3 / b_legno_cm) ** 0.5)
         h_legno_cm = max(44, ((h_legno_cm + 3) // 4) * 4) 
+        if "R 0" not in classe_fuoco:
+            h_legno_cm += fuoco_add * 2
 
         w_el_req_cm3 = (m_ed * 100.0) / 33.8 
         if w_el_req_cm3 > 3500: profilo_acciaio = "IPE 600 / HEB 500"
@@ -329,7 +337,7 @@ def esegui_calcolo_deterministico(dati_geo):
         h_cap_cm = max(80, ((int(h_legno_cm * 1.2) + 4) // 5) * 5)
         profilo_cap = f"Trave a T rovescia precompressa altezza {h_cap_cm} cm"
 
-        travi_legno_out = f"Base {b_legno_cm} cm x Altezza {h_legno_cm} cm (GL24h)"
+        travi_legno_out = f"Base {b_legno_cm} cm x Altezza {h_legno_cm} cm (GL24h - Incendio {classe_fuoco})"
         travi_acciaio_out = f"Profilo {profilo_acciaio} S355JR"
         travi_cap_out = profilo_cap
 
@@ -338,8 +346,8 @@ def esegui_calcolo_deterministico(dati_geo):
     E_legno = 1150 
     limite_spostamento_cm = (h_gronda * 100) / 150 
     
-    b_pil_perim_cm = 20
-    h_pil_perim_cm = 32 
+    b_pil_perim_cm = 20 + (fuoco_add * 2 if "R 0" not in classe_fuoco else 0)
+    h_pil_perim_cm = 32 + (fuoco_add * 2 if "R 0" not in classe_fuoco else 0)
     while True:
         I_pil = (b_pil_perim_cm * h_pil_perim_cm**3) / 12
         W_pil = (b_pil_perim_cm * h_pil_perim_cm**2) / 6
@@ -351,7 +359,7 @@ def esegui_calcolo_deterministico(dati_geo):
 
     h_rif_legno = h_legno_cm if 'h_legno_cm' in locals() else 80
     h_pil_interm_cm = max(32, ((int(h_rif_legno * 0.50) + 3) // 4) * 4)
-    b_pil_interm_cm = 20
+    b_pil_interm_cm = 20 + (fuoco_add * 2 if "R 0" not in classe_fuoco else 0)
 
     w_el_rif = w_el_req_cm3 if 'w_el_req_cm3' in locals() else (m_ed * 100.0) / 33.8
     if w_el_rif > 3500: pil_p_acc, pil_i_acc = "HEB 300", "HEA 240"
@@ -398,10 +406,10 @@ def esegui_calcolo_deterministico(dati_geo):
     ml_tot_montanti_long_singola_parete = num_totale_montanti_long_singola_parete * h_gronda
     ml_tot_montanti_long_entrambe_pareti = ml_tot_montanti_long_singola_parete * 2
 
-    if h_colmo <= 6.5: montante_legno, montante_acciaio = "Sezione 14x14 cm (GL24h)", "HEA 120"
-    elif h_colmo <= 9.5: montante_legno, montante_acciaio = "Sezione 16x16 cm (GL24h)", "HEA 140"
-    elif h_colmo <= 12.5: montante_legno, montante_acciaio = "Sezione 16x24 cm (GL24h)", "HEA 180"
-    else: montante_legno, montante_acciaio = "Sezione 20x28 cm (GL24h)", "HEA 220"
+    if h_colmo <= 6.5: montante_legno, montante_acciaio = f"Sezione 14x14 cm (GL24h - {classe_fuoco})", "HEA 120"
+    elif h_colmo <= 9.5: montante_legno, montante_acciaio = f"Sezione 16x16 cm (GL24h - {classe_fuoco})", "HEA 140"
+    elif h_colmo <= 12.5: montante_legno, montante_acciaio = f"Sezione 16x24 cm (GL24h - {classe_fuoco})", "HEA 180"
+    else: montante_legno, montante_acciaio = f"Sezione 20x28 cm (GL24h - {classe_fuoco})", "HEA 220"
 
     mq_acciaio = round((luce_totale + h_gronda * 2) * (dati_geo['num_campate'] + 1) * 0.6, 1)
 
@@ -409,8 +417,8 @@ def esegui_calcolo_deterministico(dati_geo):
         "luogo": luogo_str, "qsk": qsk, "zona_vento": zona_vento, "pressione_vento": press_vento_str, "zona_sismica": zona_sismica,
         "classe_uso": "Classe II", "fattore_struttura_q": "q = 2.0",
         "travi_legno": travi_legno_out, "travi_acciaio": travi_acciaio_out, "travi_cap": travi_cap_out,
-        "pilastri_perimetrali_legno": f"Sezione {b_pil_perim_cm}x{h_pil_perim_cm} cm (Drift H/150)",
-        "pilastri_intermedi_legno": f"Sezione {b_pil_interm_cm}x{h_pil_interm_cm} cm",
+        "pilastri_perimetrali_legno": f"Sezione {b_pil_perim_cm}x{h_pil_perim_cm} cm (Drift H/150 - {classe_fuoco})",
+        "pilastri_intermedi_legno": f"Sezione {b_pil_interm_cm}x{h_pil_interm_cm} cm ({classe_fuoco})",
         "pilastri_perimetrali_acciaio": f"Profilo {pil_p_acc} S355JR",
         "pilastri_intermedi_acciaio": f"Profilo {pil_i_acc} S355JR",
         "pilastri_perimetrali_cap": f"C.A.P. 40x45 cm", "pilastri_intermedi_cap": f"C.A.P. 40x40 cm",
@@ -420,7 +428,7 @@ def esegui_calcolo_deterministico(dati_geo):
         "ml_baraccatura_tot": round(ml_tot_baraccatura, 1),
         "ml_baraccatura_long_singola": round(ml_baraccatura_long_singola, 1),
         "ml_baraccatura_timpani_singolo": round(ml_baraccatura_timpani_singolo, 1),
-        "baraccatura_legno_lamellare": f"GL24h 12x16 cm", "baraccatura_legno_massiccio": f"C24 14x16 cm", "baraccatura_acciaio": f"Omega / Tubolare 100x50x3",
+        "baraccatura_legno_lamellare": f"GL24h 12x16 cm ({classe_fuoco})", "baraccatura_legno_massiccio": f"C24 14x16 cm ({classe_fuoco})", "baraccatura_acciaio": f"Omega / Tubolare 100x50x3",
         "num_montanti_timpano_singolo": num_montanti_timpano_singola_facciata,
         "passo_montanti_timpano": round(passo_montanti_timpano, 2),
         "ml_per_montante_timpano": ml_per_montante_timpano,
@@ -445,10 +453,10 @@ def esegui_calcolo_deterministico(dati_geo):
         "conn_pilastro_fondazione_interm_elementi": f"N. {n_anc_interm} tirafondi M24",
         "conn_pilastro_fondazione_interm_kg": f"{peso_anc_interm_kg} kg",
         "dettaglio_giunto_colmo": "Piastra di colmo bullonata",
-        "classe_resistenza_fuoco": "R 60",
+        "classe_resistenza_fuoco": classe_fuoco,
         "mq_intumescente": f"{mq_acciaio} mq",
-        "dettaglio_verniciatura": "Primer + Intumescente R60",
-        "note_tecniche": f"Calcolo esatto NTC 2018. L={luce_totale}m, H_truss={H_truss:.2f}m."
+        "dettaglio_verniciatura": f"Primer + Intumescente {classe_fuoco}" if "R 0" not in classe_fuoco else "Nessun trattamento antincendio richiesto (R0)",
+        "note_tecniche": f"Calcolo esatto NTC 2018 con verifica antincendio ({classe_fuoco}). L={luce_totale}m, H_truss={H_truss:.2f}m."
     }
     return risultati_deterministici
 
@@ -911,6 +919,9 @@ with col_p2:
     elif tipo_isolante_parete == "Lana di Roccia": spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [80, 100, 120, 150], key="spessore_parete_lana")
     else: spessore_pannello_parete = 0
 
+st.markdown("### 🔥 Requisiti Antincendio (NTC 2018)")
+classe_fuoco_ui = st.selectbox("Classe di Resistenza al Fuoco", ["R 0 (Nessun requisito)", "R 60", "R 90", "R 120"], index=1, key="classe_fuoco_ui")
+
 if st.button("Esegui Dimensionamento, Logistica e Genera Modello 3D", type="primary"):
     if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or altezza_colmo_ui <= 0:
         st.warning("⚠️ Inserisci tutte le dimensioni geometriche con valori superiori a zero prima di eseguire il calcolo.")
@@ -931,7 +942,8 @@ if st.button("Esegui Dimensionamento, Logistica e Genera Modello 3D", type="prim
             'tipo_isolante_parete': tipo_isolante_parete,
             'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
             'impianto_fv_desc': impianto_fv_desc, 'carico_aggiuntivo': carico_aggiuntivo,
-            'latitudine': lat_estratta, 'longitudine': lon_estratta, 'comune': comune_finale
+            'latitudine': lat_estratta, 'longitudine': lon_estratta, 'comune': comune_finale,
+            'classe_fuoco': classe_fuoco_ui
         }
 
         if modalita_deterministica:
