@@ -429,7 +429,6 @@ def esegui_calcolo_deterministico(dati_geo):
         "controventi_copertura_legno": "Tiranti tondi Ø 20 mm", "controventi_copertura_acciaio": "Tubolari incrociati Ø 89x4 mm",
         "controventi_parete_pos": "Campate di estremità",
         "controventi_parete_legno": "Diagonali GL 16x16 cm", "controventi_parete_acciaio": "Croci di Sant'Andrea L 80x8",
-        # Ristabilite connessioni e dettagli esatti
         "conn_trave_pilastro_tipo": "Nodo semi-rigido con piastre",
         "conn_trave_pilastro_perim_elementi": f"N. {n_bulloni_perim} bulloni 8.8 M20",
         "conn_trave_pilastro_perim_kg": f"{peso_conn_perim_kg} kg",
@@ -507,29 +506,25 @@ def calcola_logistica_trasporti(dati, distinta):
     h_gronda = dati['altezza_gronda']
     num_telai = distinta['num_telai']
     num_pilastri = distinta['num_pilastri_totali']
-     categoria_struttura = dati.get('categoria_struttura', 'Portali ad anima piena')
+    categoria_struttura = dati.get('categoria_struttura', 'Portali ad anima piena')
     tipo_travatura = dati.get('tipo_travatura', 'Bi-falda semplice')
     
     sviluppo_falda = math.sqrt((luce/2)**2 + (h_colmo - h_gronda)**2)
 
-    # Regola 2 & 4: Calcolo lunghezza di trasporto per le travi principali
+    # Regole trasporto: giunto in colmo = metà falda; reticolari/capriate = pezzi singoli; bifalde = pezzo unico
     if categoria_struttura == "Portali ad anima piena":
         if "giuntata in colmo" in tipo_travatura.lower():
-            # Regola 2: Giuntata in colmo -> trasporto a metà falda
             max_lunghezza_trave = sviluppo_falda / 2.0
         else:
-            # Regola 4: Bi-falda semplice o curva -> trasporto in pezzo unico (intera falda)
             max_lunghezza_trave = sviluppo_falda
     elif categoria_struttura in ["Capriate", "Travi Reticolari"]:
-        # Regola 3: Assemblate in cantiere -> trasporto dei singoli pezzi (profilati standard entro 12-13.5m)
         max_lunghezza_trave = 12.0
     else:
         max_lunghezza_trave = sviluppo_falda
 
-    # Selezione mezzo e viaggi travi in base alle regole economiche e flotta Veneta Trasporti
     if max_lunghezza_trave <= 13.5:
         mezzo_travi = "Bilico standard 13,5m (Convenzionale economico)"
-        viaggi_travi = math.ceil(num_telai * 2 / 4) # 4 pezzi per carico
+        viaggi_travi = math.ceil(num_telai * 2 / 4)
     elif max_lunghezza_trave <= 16.0:
         mezzo_travi = "Bilico standard 16m (Allungato)"
         viaggi_travi = math.ceil(num_telai * 2 / 4)
@@ -546,7 +541,6 @@ def calcola_logistica_trasporti(dati, distinta):
         mezzo_travi = "Bilico speciale >33,5m (Eccezionale con scorta tecnica)"
         viaggi_travi = num_telai * 2
 
-    # Pilastri
     max_h_pilastro = max(h_gronda, h_colmo)
     if max_h_pilastro <= 13.5:
         mezzo_pilastri = "Bilico standard 13,5m / 16m"
@@ -555,12 +549,10 @@ def calcola_logistica_trasporti(dati, distinta):
         mezzo_pilastri = "Bilico speciale allungabile (19m - 25m)"
         viaggi_pilastri = math.ceil(num_pilastri / 4)
 
-    # Arcarecci e profili
     ml_tot_profili = distinta['ml_arcarecci'] + dati.get('ml_baraccatura_tot', 0) + dati.get('ml_tot_timpani_entrambe', 0) + dati.get('ml_tot_montanti_long_entrambe', 0)
     peso_profili_kg = ml_tot_profili * 9.5 
     viaggi_profili = max(1, math.ceil(peso_profili_kg / 24000.0))
 
-    # Pannelli
     mq_tot_rivestimenti = distinta['mq_copertura'] + distinta['mq_pareti_lunghe'] + distinta['mq_timpani']
     viaggi_pannelli = max(1, math.ceil(mq_tot_rivestimenti / 550.0))
     viaggi_accessori = 1
@@ -1107,7 +1099,6 @@ if 'dati_ultimi' in st.session_state:
         st.markdown("#### 🧱 Controventi di Parete")
         st.warning(f"Legno: {dati.get('controventi_parete_legno')} | Acciaio: {dati.get('controventi_parete_acciaio')}")
 
-    # Ripristinate e re-inserite le sezioni Connessioni e Antincendio a video
     st.markdown("---")
     st.markdown("### 🔩 8. Dimensionamento Dettagliato Connessioni, Nodi e Giunti in Colmo")
     col_n1, col_n2 = st.columns(2)
