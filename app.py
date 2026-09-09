@@ -235,6 +235,11 @@ def esegui_calcolo_deterministico(dati_geo):
     elif W_req_arc < 85: sez_arc = "Tubolare 150x75x4 / IPE 140"
     else: sez_arc = "IPE 180"
 
+    W_req_arc_legno = (M_ed_arc * 100) / 14.5
+    h_arc_legno = max(16, int((6 * W_req_arc_legno / 10.0) ** 0.5))
+    h_arc_legno = ((h_arc_legno + 3) // 4) * 4
+    sez_arc_legno = f"GL24h 10x{h_arc_legno} cm"
+
     q_ed_portale = interasse * q_tot_copertura_mq
     luce_campata = luce_totale / (num_appoggi - 1) if num_appoggi >= 3 else luce_totale
     
@@ -409,7 +414,7 @@ def esegui_calcolo_deterministico(dati_geo):
         "pilastri_perimetrali_acciaio": f"Profilo {pil_p_acc} S355JR",
         "pilastri_intermedi_acciaio": f"Profilo {pil_i_acc} S355JR",
         "pilastri_perimetrali_cap": f"C.A.P. 40x45 cm", "pilastri_intermedi_cap": f"C.A.P. 40x40 cm",
-        "passo_arcarecci_calc": round(passo_arcarecci, 2), "sezione_arcarecci": f"{sez_arc}",
+        "passo_arcarecci_calc": round(passo_arcarecci, 2), "sezione_arcarecci": f"{sez_arc}", "sezione_arcarecci_legno": f"{sez_arc_legno}",
         "verifica_arcarecci": f"Verificato ({pos_arcarecci}) - M_ed: {M_ed_arc:.1f} kNm",
         "passo_baraccatura_calc": round(passo_baraccatura, 2),
         "ml_baraccatura_tot": round(ml_tot_baraccatura, 1),
@@ -426,7 +431,7 @@ def esegui_calcolo_deterministico(dati_geo):
         "montante_sezione_legno": montante_legno, "montante_sezione_acciaio": montante_acciaio, "montante_sezione_cap": "C.A.P. 20x20 cm",
         "campate_controventi_indici": [0, dati_geo['num_campate'] - 1],
         "controventi_copertura_pos": "Campate di estremità",
-        "controventi_copertura_legno": "Tiranti tondi Ø 20 mm", "controventi_copertura_acciaio": "Tubolari incrociati Ø 89x4 mm",
+        "controventi_copertura_legno": "Diagonali in legno lamellare GL24h 14x14 cm", "controventi_copertura_acciaio": "Tubolari incrociati Ø 89x4 mm",
         "controventi_parete_pos": "Campate di estremità",
         "controventi_parete_legno": "Diagonali GL 16x16 cm", "controventi_parete_acciaio": "Croci di Sant'Andrea L 80x8",
         "conn_trave_pilastro_tipo": "Nodo semi-rigido con piastre",
@@ -508,7 +513,6 @@ def calcola_logistica_trasporti(dati, distinta):
     num_pilastri = distinta['num_pilastri_totali']
     num_travi_falda = distinta['num_travi_falda']
     categoria_struttura = dati.get('categoria_struttura', 'Portali ad anima piena')
-    tipo_travatura = dati.get('tipo_travatura', 'Bi-falda semplice')
     
     sviluppo_falda = math.sqrt((luce/2)**2 + (h_colmo - h_gronda)**2)
 
@@ -519,7 +523,6 @@ def calcola_logistica_trasporti(dati, distinta):
     else:
         max_lunghezza_trave = sviluppo_falda
 
-    # Definizione mezzo e limite massimo di pezzi trasportabili per ingombro/dimensioni eccezionali
     if max_lunghezza_trave <= 13.5:
         mezzo_travi = "Bilico standard 13,5m (Convenzionale economico)"
         max_pezzi_per_ingombro = 6
@@ -539,16 +542,13 @@ def calcola_logistica_trasporti(dati, distinta):
         mezzo_travi = "Bilico speciale >33,5m (Eccezionale con scorta tecnica)"
         max_pezzi_per_ingombro = 1
 
-    # Incrocio con la portata utile del mezzo (limite peso ~24.000 kg) e stima peso trave
-    peso_unitario_trave_kg = max_lunghezza_trave * 45.0  # stima indicativa kg/ml per elemento strutturale principale
+    peso_unitario_trave_kg = max_lunghezza_trave * 45.0  
     portata_utile_kg = 24000.0
     max_pezzi_per_peso = max(1, int(portata_utile_kg / max(1.0, peso_unitario_trave_kg)))
 
-    # Numero effettivo di travi caricabili per singolo viaggio (minimo tra limite geometrico/ingombro e limite ponderale)
     max_pezzi_per_viaggio_travi = min(max_pezzi_per_ingombro, max_pezzi_per_peso)
     viaggi_travi = math.ceil(num_travi_falda / max_pezzi_per_viaggio_travi)
 
-    # Analisi pilastri con incrocio ingombro/portata
     max_h_pilastro = max(h_gronda, h_colmo)
     if max_h_pilastro <= 13.5:
         mezzo_pilastri = "Bilico standard 13,5m / 16m"
@@ -619,7 +619,7 @@ def genera_word_report(dati, distinta, logistica):
     doc.add_paragraph(f"- Accessori, Connessioni e Bulloneria: {logistica['viaggi_accessori']} viaggio dedicato")
 
     doc.add_heading('4. Arcarecci di Copertura e Baraccatura', level=1)
-    doc.add_paragraph(f"Passo Arcarecci: {dati.get('passo_arcarecci_calc', 1.5):.2f} m | Sezione: {dati.get('sezione_arcarecci', 'N.D.')}")
+    doc.add_paragraph(f"Passo Arcarecci: {dati.get('passo_arcarecci_calc', 1.5):.2f} m | Sezione Acciaio: {dati.get('sezione_arcarecci', 'N.D.')} | Sezione Legno: {dati.get('sezione_arcarecci_legno', 'N.D.')}")
     doc.add_paragraph(f"Passo Baraccatura Parete: {dati.get('passo_baraccatura_calc', 2.0):.2f} m | ML Totali: {dati.get('ml_baraccatura_tot', 0)} ml")
     doc.add_paragraph(f"Montanti Timpani: {dati.get('ml_tot_timpani_entrambe', 0):.2f} ml | Montanti Longitudinali: {dati.get('ml_tot_montanti_long_entrambe', 0):.2f} ml")
 
@@ -982,14 +982,14 @@ if 'dati_ultimi' in st.session_state:
     st.markdown("---")
     st.markdown("### 🚚 Piano Logistico e Calcolo Viaggi di Trasporto (Flotta Veneta Trasporti)")
     c_l1, c_l2, c_l3 = st.columns(3)
-    c_l1.metric("Totale Viaggi Stimati", f"{logistica['tot_viaggi']} Viaggi", "Ottimizzato Costo/Portata (max 24t)", delta_color="off")
-    c_l2.metric("Mezzo Travi / Capriate", logistica['mezzo_travi'], f"N° {logistica['viaggi_travi']} Viaggi (Max {logistica['qta_effettiva_travi']} pz/viaggio)")
-    c_l3.metric("Mezzo Pilastri", logistica['mezzo_pilastri'], f"N° {logistica['viaggi_pilastri']} Viaggi", delta_color="off")
+    c_l1.metric("Totale Viaggi Stimati", f"{logistica.get('tot_viaggi', 0)} Viaggi", "Ottimizzato Costo/Portata (max 24t)", delta_color="off")
+    c_l2.metric("Mezzo Travi / Capriate", logistica.get('mezzo_travi', 'N.D.'), f"N° {logistica.get('viaggi_travi', 0)} Viaggi (Max {logistica.get('qta_effettiva_travi', 1)} pz/viaggio)")
+    c_l3.metric("Mezzo Pilastri", logistica.get('mezzo_pilastri', 'N.D.'), f"N° {logistica.get('viaggi_pilastri', 0)} Viaggi", delta_color="off")
 
     c_l4, c_l5, c_l6 = st.columns(3)
-    c_l4.metric("Arcarecci e Baraccatura", f"N° {logistica['viaggi_profili']} Viaggi", f"Tot: {logistica['ml_tot_profili']} ml", delta_color="off")
-    c_l5.metric("Pannelli e Copertura", f"N° {logistica['viaggi_pannelli']} Viaggi", f"Area: {logistica['mq_tot_rivestimenti']} mq", delta_color="off")
-    c_l6.metric("Accessori e Connessioni", f"N° {logistica['viaggi_accessori']} Viaggio", "Bulloneria e piastre", delta_color="off")
+    c_l4.metric("Arcarecci e Baraccatura", f"N° {logistica.get('viaggi_profili', 0)} Viaggi", f"Tot: {logistica.get('ml_tot_profili', 0)} ml", delta_color="off")
+    c_l5.metric("Pannelli e Copertura", f"N° {logistica.get('viaggi_pannelli', 0)} Viaggi", f"Area: {logistica.get('mq_tot_rivestimenti', 0)} mq", delta_color="off")
+    c_l6.metric("Accessori e Connessioni", f"N° {logistica.get('viaggi_accessori', 1)} Viaggio", "Bulloneria e piastre", delta_color="off")
 
     st.markdown("---")
     st.markdown("### 🌐 Modello 3D Dinamico della Struttura")
@@ -1028,7 +1028,7 @@ if 'dati_ultimi' in st.session_state:
     
     st.markdown("---")
     st.markdown("### 🪵 3. Arcarecci di Copertura")
-    st.info(f"**Passo Calcolato Arcarecci:** {dati.get('passo_arcarecci_calc', 1.5):.2f} m | **Posizione:** {dati.get('posizione_arcarecci', 'Sopra i telai')} | **Sezione:** {dati.get('sezione_arcarecci', 'N.D.')}")
+    st.info(f"**Passo Calcolato Arcarecci:** {dati.get('passo_arcarecci_calc', 1.5):.2f} m | **Posizione:** {dati.get('posizione_arcarecci', 'Sopra i telai')}  \n- **Sezione Acciaio:** {dati.get('sezione_arcarecci', 'N.D.')}  \n- **Sezione Legno:** {dati.get('sezione_arcarecci_legno', 'N.D.')}")
     st.write(f"**Verifica Flessionale:** {dati.get('verifica_arcarecci', 'Verificato')}")
     
     st.markdown("---")
