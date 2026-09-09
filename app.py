@@ -499,7 +499,7 @@ def calcola_distinta_elementi(dati):
         "tot_montanti_longitudinali": tot_montanti_longitudinali
     }
 
-# --- MODULO LOGISTICA AGGIORNATO (REGOLE DI TRASPORTO SPECIFICHE) ---
+# --- MODULO LOGISTICA CORRETTO (LUNGHEZZA FALDA INTERA PER TRAVI GIUNTATE IN COLMO) ---
 def calcola_logistica_trasporti(dati, distinta):
     luce = dati['luce_totale']
     h_colmo = dati['altezza_colmo']
@@ -511,10 +511,10 @@ def calcola_logistica_trasporti(dati, distinta):
     
     sviluppo_falda = math.sqrt((luce/2)**2 + (h_colmo - h_gronda)**2)
 
-    # Regole trasporto: giunto in colmo = metà falda; reticolari/capriate = pezzi singoli; bifalde = pezzo unico
+    # Correzione: per travi giuntate in colmo, la lunghezza di trasporto è la singola falda intera (~metà luce totale)
     if categoria_struttura == "Portali ad anima piena":
         if "giuntata in colmo" in tipo_travatura.lower():
-            max_lunghezza_trave = sviluppo_falda / 2.0
+            max_lunghezza_trave = sviluppo_falda
         else:
             max_lunghezza_trave = sviluppo_falda
     elif categoria_struttura in ["Capriate", "Travi Reticolari"]:
