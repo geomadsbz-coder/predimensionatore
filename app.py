@@ -417,6 +417,8 @@ def esegui_calcolo_deterministico(dati_geo):
         "luogo": luogo_str, "qsk": qsk, "zona_vento": zona_vento, "pressione_vento": press_vento_str, "zona_sismica": zona_sismica,
         "classe_uso": "Classe II", "fattore_struttura_q": "q = 2.0",
         "travi_legno": travi_legno_out, "travi_acciaio": travi_acciaio_out, "travi_cap": travi_cap_out,
+        "b_trave_legno_cm": locals().get('b_legno_cm', 20),
+        "h_trave_legno_cm": locals().get('h_legno_cm', 80),
         "pilastri_perimetrali_legno": f"Sezione {b_pil_perim_cm}x{h_pil_perim_cm} cm (Drift H/150 - {classe_fuoco})",
         "pilastri_intermedi_legno": f"Sezione {b_pil_interm_cm}x{h_pil_interm_cm} cm ({classe_fuoco})",
         "pilastri_perimetrali_acciaio": f"Profilo {pil_p_acc} S355JR",
@@ -550,7 +552,14 @@ def calcola_logistica_trasporti(dati, distinta):
         mezzo_travi = "Bilico speciale >33,5m (Eccezionale con scorta tecnica)"
         max_pezzi_per_ingombro = 1
 
-    peso_unitario_trave_kg = max_lunghezza_trave * 45.0  
+    if categoria_struttura == "Portali ad anima piena":
+        b_m = dati.get('b_trave_legno_cm', 20) / 100.0
+        h_m = dati.get('h_trave_legno_cm', 80) / 100.0
+        peso_specifico_lamellare = 500.0  # kg/m³ calcolato sul volume del legno
+        peso_unitario_trave_kg = max_lunghezza_trave * b_m * h_m * peso_specifico_lamellare
+    else:
+        peso_unitario_trave_kg = max_lunghezza_trave * 45.0  
+
     portata_utile_kg = 24000.0
     max_pezzi_per_peso = max(1, int(portata_utile_kg / max(1.0, peso_unitario_trave_kg)))
 
