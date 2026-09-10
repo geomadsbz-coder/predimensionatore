@@ -514,7 +514,7 @@ def calcola_distinta_elementi(dati):
         "tot_montanti_longitudinali": tot_montanti_longitudinali
     }
 
-# --- MODULO LOGISTICA AGGIORNATO (INCROCIO INGOMBRO, QUANTITÀ E PORTATA) ---
+# --- MODULO LOGISTICA AGGIORNATO (ART. 61 CODICE DELLA STRADA E PRIORITÀ PESO) ---
 def calcola_logistica_trasporti(dati, distinta):
     luce = dati['luce_totale']
     h_colmo = dati['altezza_colmo']
@@ -533,50 +533,42 @@ def calcola_logistica_trasporti(dati, distinta):
     else:
         max_lunghezza_trave = sviluppo_falda
 
-    if max_lunghezza_trave <= 13.5:
-        mezzo_travi = "Bilico standard 13,5m (Convenzionale economico)"
-        max_pezzi_per_ingombro = 6
-    elif max_lunghezza_trave <= 16.0:
-        mezzo_travi = "Bilico standard 16m (Allungato)"
-        max_pezzi_per_ingombro = 4
-    elif max_lunghezza_trave <= 19.0:
-        mezzo_travi = "Bilico speciale allungabile 19m (Eccezionale)"
-        max_pezzi_per_ingombro = 2
+    # Classificazione del mezzo in base all'Art. 61 del Codice della Strada (limiti dimensionali sagoma)
+    if max_lunghezza_trave <= 16.50:
+        mezzo_travi = "Autoarticolato / Bilico standard Art. 61 CDS (L max 16,50m)"
+    elif max_lunghezza_trave <= 18.75:
+        mezzo_travi = "Autotreno standard Art. 61 CDS (L max 18,75m)"
     elif max_lunghezza_trave <= 25.0:
-        mezzo_travi = "Bilico speciale allungabile 25m (Eccezionale)"
-        max_pezzi_per_ingombro = 2
+        mezzo_travi = "Trasporto Eccezionale - Bilico allungabile (L > 16,50m)"
     elif max_lunghezza_trave <= 33.5:
-        mezzo_travi = "Bilico speciale 33,5m (Eccezionale con autorizzazione)"
-        max_pezzi_per_ingombro = 1
+        mezzo_travi = "Trasporto Eccezionale - Rimorchio speciale (L > 25m con autorizzazione)"
     else:
-        mezzo_travi = "Bilico speciale >33,5m (Eccezionale con scorta tecnica)"
-        max_pezzi_per_ingombro = 1
+        mezzo_travi = "Trasporto Eccezionale - Convoglio eccezionale con scorta tecnica"
 
     if categoria_struttura == "Portali ad anima piena":
         b_m = dati.get('b_trave_legno_cm', 20) / 100.0
         h_m = dati.get('h_trave_legno_cm', 80) / 100.0
-        peso_specifico_lamellare = 500.0  # kg/m³ calcolato sul volume del legno
+        peso_specifico_lamellare = 500.0  
         peso_unitario_trave_kg = max_lunghezza_trave * b_m * h_m * peso_specifico_lamellare
     else:
         peso_unitario_trave_kg = max_lunghezza_trave * 45.0  
 
     portata_utile_kg = 24000.0
+    # Priorità assoluta al peso: calcolo quanti pezzi fisicamente rientrano nel carico utile del mezzo (24t)
     max_pezzi_per_peso = max(1, int(portata_utile_kg / max(1.0, peso_unitario_trave_kg)))
 
-    max_pezzi_per_viaggio_travi = min(max_pezzi_per_ingombro, max_pezzi_per_peso)
+    max_pezzi_per_viaggio_travi = max_pezzi_per_peso
     viaggi_travi = math.ceil(num_travi_falda / max_pezzi_per_viaggio_travi)
 
     max_h_pilastro = max(h_gronda, h_colmo)
-    if max_h_pilastro <= 13.5:
-        mezzo_pilastri = "Bilico standard 13,5m / 16m"
-        max_pezzi_per_viaggio_pilastri = 8
+    if max_h_pilastro <= 16.50:
+        mezzo_pilastri = "Bilico standard Art. 61 CDS"
     else:
-        mezzo_pilastri = "Bilico speciale allungabile (19m - 25m)"
-        max_pezzi_per_viaggio_pilastri = 4
+        mezzo_pilastri = "Trasporto Eccezionale - Allungabile per pilastri"
         
     peso_unitario_pilastro_kg = max_h_pilastro * 50.0
     max_pezzi_pilastro_peso = max(1, int(portata_utile_kg / max(1.0, peso_unitario_pilastro_kg)))
-    max_pezzi_per_viaggio_pilastri = min(max_pezzi_per_viaggio_pilastri, max_pezzi_pilastro_peso)
+    max_pezzi_per_viaggio_pilastri = max_pezzi_pilastro_peso
     
     viaggi_pilastri = math.ceil(num_pilastri / max_pezzi_per_viaggio_pilastri)
 
