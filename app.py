@@ -875,7 +875,8 @@ pannelli_xlam_db = [
     {"nome": "CLT 180 C5s", "spessore": 180, "strati": [40, 30, 40, 30, 40], "orientamento": [1, 0, 1, 0, 1]},
     {"nome": "CLT 200 C5s", "spessore": 200, "strati": [40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 1]},
     {"nome": "CLT 240 C7s", "spessore": 240, "strati": [40, 30, 30, 40, 30, 30, 40], "orientamento": [1, 0, 1, 0, 1, 0, 1]},
-    {"nome": "CLT 280 C7s", "spessore": 280, "strati": [40, 40, 40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 1, 0, 1]}
+    {"nome": "CLT 280 C7s", "spessore": 280, "strati": [40, 40, 40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 1, 0, 1]},
+    {"nome": "CLT 320 C8s", "spessore": 320, "strati": [40, 40, 40, 40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 0, 1, 0, 1]}
 ]
 
 
@@ -1232,7 +1233,7 @@ with tab_principale:
 # --- NUOVO MODULO A PARTE PER SOLAI XLAM ---
 with tab_xlam:
     st.header("Modulo Dimensionamento Solai in XLAM (NTC 2018)")
-    st.markdown("Il dimensionamento considera la gamma stratigrafica tipica per pannelli CLT da solaio a marchio **Stora Enso** (pannelli C a 3, 5 e 7 strati).")
+    st.markdown("Il dimensionamento considera la gamma stratigrafica tipica per pannelli CLT da solaio a marchio **Stora Enso** (pannelli C a 3, 5, 7 e 8 strati).")
     
     col_x1, col_x2 = st.columns(2)
     with col_x1:
@@ -1338,6 +1339,7 @@ with tab_xlam:
         if pannello_idoneo:
             st.success(f"✅ **Solaio XLAM Ottimizzato Trovato:** {pannello_idoneo['nome']} (Spessore {pannello_idoneo['spessore']} mm)")
             st.markdown(f"**Composizione strati (Top -> Bottom):** {pannello_idoneo['strati']} mm")
+            st.write(f"Peso proprio strutturale (G1) considerato nel calcolo: **{peso_proprio_g1:.2f} kN/m²**")
             
             c_res1, c_res2, c_res3 = st.columns(3)
             with c_res1:
@@ -1356,4 +1358,4 @@ with tab_xlam:
                     st.write(f"Strato carbonizzato rimosso: **{d_ef:.1f} mm**")
                     st.write(f"$\sigma_{{m,fi,d}}$ = **{sigma_m_fi:.2f} MPa** (Lim. {f_md_fi:.2f} MPa)")
         else:
-            st.error("Nessun pannello XLAM dal database standard (fino a 280mm) risulta verificato. Prova a diminuire la luce, ridurre i carichi, o prevedere dei supporti intermedi per il solaio.")
+            st.error("Nessun pannello XLAM dal database standard (fino a 320mm) risulta verificato. Prova a diminuire la luce, ridurre i carichi, o prevedere dei supporti intermedi per il solaio.")
