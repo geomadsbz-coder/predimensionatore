@@ -219,10 +219,21 @@ def esegui_calcolo_deterministico(dati_geo):
     ml_baraccatura_timpani_tot = ml_baraccatura_timpani_singolo * 2
     ml_tot_baraccatura = ml_baraccatura_long_tot + ml_baraccatura_timpani_tot
 
+    tipo_ostacolo = dati_geo.get('tipo_ostacolo_neve', 'Nessuno')
+    h_ostacolo = dati_geo.get('h_ostacolo_neve', 0.0)
+    mu_neve = 0.8
+    peso_vol_neve = 2.0 # kN/m3
+    if tipo_ostacolo == "Parapetto":
+        mu_neve = max(0.8, min(2.0, peso_vol_neve * h_ostacolo / qsk)) if qsk > 0 else 0.8
+    elif tipo_ostacolo == "Edificio adiacente più alto":
+        mu_neve = max(0.8, min(4.0, peso_vol_neve * h_ostacolo / qsk)) if qsk > 0 else 0.8
+    
+    q_s_eff = mu_neve * qsk
+
     g1, g2 = 0.15, 0.25
     if "Presente" in dati_geo.get('impianto_fv_desc', ''): g2 += 0.20
     g2 += dati_geo.get('carico_aggiuntivo', 0.0)
-    q_tot_copertura_mq = (1.3 * g1 + 1.5 * g2 + 1.5 * qsk)
+    q_tot_copertura_mq = (1.3 * g1 + 1.5 * g2 + 1.5 * q_s_eff)
     q_arc = q_tot_copertura_mq * passo_arcarecci
     
     if "In luce" in pos_arcarecci:
@@ -465,7 +476,10 @@ def esegui_calcolo_deterministico(dati_geo):
         "classe_servizio": classe_servizio,
         "mq_intumescente": f"{mq_acciaio} mq",
         "dettaglio_verniciatura": f"Primer + Intumescente {classe_fuoco}" if "R 0" not in classe_fuoco else "Nessun trattamento antincendio richiesto (R0)",
-        "note_tecniche": f"Calcolo esatto NTC 2018 con verifica antincendio ({classe_fuoco}) e {classe_servizio}. L={luce_totale}m, H_truss={H_truss:.2f}m."
+        "note_tecniche": f"Calcolo esatto NTC 2018 con verifica antincendio ({classe_fuoco}) e {classe_servizio}. L={luce_totale}m, H_truss={H_truss:.2f}m.",
+        "mu_neve": round(mu_neve, 2),
+        "q_s_eff": round(q_s_eff, 2),
+        "tipo_ostacolo_neve": tipo_ostacolo
     }
     return risultati_deterministici
 
@@ -589,7 +603,10 @@ def genera_word_report(dati, distinta, logistica):
     
     doc.add_heading('1. Parametri Geometrici, Climatici, Sismici e di Configurazione', level=1)
     doc.add_paragraph(f"Località / Comune: {dati.get('luogo', 'N.D.')}")
-    doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
+    if dati.get('tipo_ostacolo_neve', 'Nessuno') != 'Nessuno':
+        doc.add_paragraph(f"Carico Neve base (qsk): {dati.get('qsk', 1.5)} kN/m² | Coeff. di forma (μ): {dati.get('mu_neve', 0.8):.2f} | q_s accumulo: {dati.get('q_s_eff', 1.5):.2f} kN/m² ({dati.get('tipo_ostacolo_neve')})")
+    else:
+        doc.add_paragraph(f"Carico Neve (qsk): {dati.get('qsk', 1.5)} kN/m²")
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')}")
     doc.add_paragraph(f"Dimensioni Edificio: Lunghezza {dati.get('lunghezza_edificio', 0.0)} m | Larghezza {dati.get('luce_totale', 0.0)} m")
@@ -974,6 +991,18 @@ with tab_principale:
     with col_c3:
         carico_aggiuntivo = st.number_input("Carico aggiuntivo manuale (kN/mq)", min_value=0.0, value=0.0, step=0.05, format="%.2f", key="carico_aggiuntivo")
 
+    st.markdown("### ❄️ Effetti Locali: Accumulo Neve (NTC 2018 / EN 1991-1-3)")
+    accumulo_neve_attivo = st.checkbox("Considera Accumulo Neve (Parapetti o variazioni di quota)", value=False, key="accumulo_neve_attivo")
+    if accumulo_neve_attivo:
+        col_acc1, col_acc2 = st.columns(2)
+        with col_acc1:
+            tipo_ostacolo_neve = st.selectbox("Tipologia Ostacolo", ["Parapetto", "Edificio adiacente più alto"], key="tipo_ostacolo_neve")
+        with col_acc2:
+            h_ostacolo_neve = st.number_input("Altezza dell'ostacolo h (m)", min_value=0.0, value=1.0, step=0.1, key="h_ostacolo_neve")
+    else:
+        tipo_ostacolo_neve = "Nessuno"
+        h_ostacolo_neve = 0.0
+
     st.markdown("### 🧱 Rivestimento Parete")
     col_p1, col_p2 = st.columns(2)
     with col_p1:
@@ -1010,6 +1039,7 @@ with tab_principale:
                 'tipo_isolante_parete': tipo_isolante_parete,
                 'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
                 'impianto_fv_desc': impianto_fv_desc, 'carico_aggiuntivo': carico_aggiuntivo,
+                'tipo_ostacolo_neve': tipo_ostacolo_neve, 'h_ostacolo_neve': h_ostacolo_neve,
                 'latitudine': lat_estratta, 'longitudine': lon_estratta, 'comune': comune_finale,
                 'classe_fuoco': classe_fuoco_ui,
                 'classe_servizio': classe_servizio_ui
@@ -1095,7 +1125,12 @@ with tab_principale:
         st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Località / Comune", dati.get("luogo", "N.D."))
-        c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
+        
+        if dati.get('tipo_ostacolo_neve', 'Nessuno') != "Nessuno":
+            c2.metric("Neve con Accumulo (qs)", f"{dati.get('q_s_eff', 1.5):.2f} kN/m²", f"qsk={dati.get('qsk')} | μ={dati.get('mu_neve'):.2f}")
+        else:
+            c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²", "μ = 0.8")
+            
         c3.metric("Zona Vento", dati.get("zona_vento", "N.D."))
         c4.metric("Pressione Vento", dati.get("pressione_vento", "N.D."))
         
@@ -1253,7 +1288,22 @@ with tab_xlam:
     with col_qx1:
         q_k_xlam = st.number_input("Sovraccarico Accidentale - Qk (kN/m²)", min_value=0.0, value=2.0, step=0.5)
     with col_qx2:
-        qs_k_xlam = st.number_input("Carico Neve (se piano di copertura) - Qs (kN/m²)", min_value=0.0, value=0.0, step=0.1)
+        qs_k_xlam = st.number_input("Carico Neve al suolo - qsk (kN/m²)", min_value=0.0, value=0.0, step=0.1)
+
+    st.markdown("#### ❄️ Accumulo Neve (Copertura - NTC 2018)")
+    accumulo_xlam_attivo = st.checkbox("Considera Accumulo Neve", key="chk_acc_xlam")
+    if accumulo_xlam_attivo:
+        col_ax1, col_ax2 = st.columns(2)
+        with col_ax1:
+            tipo_ost_xlam = st.selectbox("Tipologia Ostacolo", ["Parapetto", "Edificio adiacente più alto"], key="tipo_ost_xlam")
+        with col_ax2:
+            h_ost_xlam = st.number_input("Altezza ostacolo h (m)", min_value=0.0, value=1.0, step=0.1, key="h_ost_xlam")
+        
+        mu_xlam_calc = min(2.0 if tipo_ost_xlam == "Parapetto" else 4.0, max(0.8, 2.0 * h_ost_xlam / qs_k_xlam)) if qs_k_xlam > 0 else 0.8
+        carico_neve_finale = mu_xlam_calc * qs_k_xlam
+        st.info(f"Coefficiente di forma calcolato (μ): **{mu_xlam_calc:.2f}** ➔ Carico neve locale da usare a flessione: **{carico_neve_finale:.2f} kN/m²**")
+    else:
+        carico_neve_finale = qs_k_xlam
 
     st.markdown("#### Stati limite di esercizio (SLE) - Limiti di Freccia")
     col_sl1, col_sl2, col_sl3 = st.columns(3)
@@ -1270,6 +1320,13 @@ with tab_xlam:
     if st.button("Dimensiona Solaio XLAM", type="primary"):
         g2_totale = df_g2["Carico [kN/m²]"].sum()
         
+        # Riapplico ricalcolo rapido per il pulsante
+        if accumulo_xlam_attivo:
+            mu_xlam_calc = min(2.0 if tipo_ost_xlam == "Parapetto" else 4.0, max(0.8, 2.0 * h_ost_xlam / qs_k_xlam)) if qs_k_xlam > 0 else 0.8
+            carico_neve_finale = mu_xlam_calc * qs_k_xlam
+        else:
+            carico_neve_finale = qs_k_xlam
+            
         # Parametri legno per XLAM (generalmente classe C24)
         E_mean = 11000.0  # N/mm2
         f_mk = 24.0       # N/mm2
@@ -1290,7 +1347,7 @@ with tab_xlam:
             peso_proprio_g1 = (pannello["spessore"] / 1000.0) * 5.0  # kN/m2
             
             # --- VERIFICA SLU ---
-            q_slu = 1.3 * (peso_proprio_g1 + g2_totale) + 1.5 * q_k_xlam + 1.5 * 0.5 * qs_k_xlam
+            q_slu = 1.3 * (peso_proprio_g1 + g2_totale) + 1.5 * q_k_xlam + 1.5 * 0.5 * carico_neve_finale
             M_ed = (q_slu * luce_xlam_ui**2) / 8.0 * 1000000.0  # Momento per 1 metro di fascia (N*mm)
             
             I_eff, W_eff = calcola_proprieta_efficaci_xlam(pannello["strati"], pannello["orientamento"])
@@ -1303,7 +1360,7 @@ with tab_xlam:
             # --- VERIFICA SLE ---
             # Carichi per fasce (kN/m)
             q_inst_G = peso_proprio_g1 + g2_totale
-            q_inst_Q = q_k_xlam + qs_k_xlam
+            q_inst_Q = q_k_xlam + carico_neve_finale
             
             # Formule di freccia elastica trave appoggiata-appoggiata
             w_inst_G = (5.0 / 384.0) * (q_inst_G / 1000.0) * (luce_xlam_ui * 1000.0)**4 / (E_mean * I_eff)
