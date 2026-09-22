@@ -12,6 +12,7 @@ import numpy as np
 import re
 import requests
 import math
+import pandas as pd
 
 # --- FUNZIONE ROBUSTA PER ESTRARRE COORDINATE E NOME LUOGO DA URL DI GOOGLE MAPS ---
 def estrai_dati_da_url_maps(url):
@@ -235,10 +236,7 @@ def esegui_calcolo_deterministico(dati_geo):
     elif W_req_arc < 85: sez_arc = "Tubolare 150x75x4 / IPE 140"
     else: sez_arc = "IPE 180"
 
-    # --- INFLUENZA DELLA CLASSE DI SERVIZIO SUL LEGNO ---
     classe_servizio = dati_geo.get('classe_servizio', 'Classe 2 (Umidità < 85%)')
-    # Se in Classe 3, k_mod diminuisce (circa da 0.9 a 0.7 per carichi istantanei neve/vento) 
-    # di conseguenza f_md si riduce. Anche il modulo elastico E subisce penalità sul lungo periodo (viscosità).
     f_md_arc = 11.27 if "Classe 3" in classe_servizio else 14.5
     f_md_trave = 11270.0 if "Classe 3" in classe_servizio else 14500.0
     E_legno_val = 950 if "Classe 3" in classe_servizio else 1150
@@ -523,7 +521,6 @@ def calcola_distinta_elementi(dati):
         "tot_montanti_longitudinali": tot_montanti_longitudinali
     }
 
-# --- MODULO LOGISTICA AGGIORNATO (ART. 61 CODICE DELLA STRADA E PRIORITÀ PESO) ---
 def calcola_logistica_trasporti(dati, distinta):
     luce = dati['luce_totale']
     h_colmo = dati['altezza_colmo']
@@ -542,17 +539,11 @@ def calcola_logistica_trasporti(dati, distinta):
     else:
         max_lunghezza_trave = sviluppo_falda
 
-    # Classificazione del mezzo in base all'Art. 61 del Codice della Strada (limiti dimensionali sagoma)
-    if max_lunghezza_trave <= 16.50:
-        mezzo_travi = "Autoarticolato / Bilico standard Art. 61 CDS (L max 16,50m)"
-    elif max_lunghezza_trave <= 18.75:
-        mezzo_travi = "Autotreno standard Art. 61 CDS (L max 18,75m)"
-    elif max_lunghezza_trave <= 25.0:
-        mezzo_travi = "Trasporto Eccezionale - Bilico allungabile (L > 16,50m)"
-    elif max_lunghezza_trave <= 33.5:
-        mezzo_travi = "Trasporto Eccezionale - Rimorchio speciale (L > 25m con autorizzazione)"
-    else:
-        mezzo_travi = "Trasporto Eccezionale - Convoglio eccezionale con scorta tecnica"
+    if max_lunghezza_trave <= 16.50: mezzo_travi = "Autoarticolato / Bilico standard Art. 61 CDS (L max 16,50m)"
+    elif max_lunghezza_trave <= 18.75: mezzo_travi = "Autotreno standard Art. 61 CDS (L max 18,75m)"
+    elif max_lunghezza_trave <= 25.0: mezzo_travi = "Trasporto Eccezionale - Bilico allungabile (L > 16,50m)"
+    elif max_lunghezza_trave <= 33.5: mezzo_travi = "Trasporto Eccezionale - Rimorchio speciale (L > 25m con autorizzazione)"
+    else: mezzo_travi = "Trasporto Eccezionale - Convoglio eccezionale con scorta tecnica"
 
     if categoria_struttura == "Portali ad anima piena":
         b_m = dati.get('b_trave_legno_cm', 20) / 100.0
@@ -563,22 +554,17 @@ def calcola_logistica_trasporti(dati, distinta):
         peso_unitario_trave_kg = max_lunghezza_trave * 45.0  
 
     portata_utile_kg = 24000.0
-    # Priorità assoluta al peso: calcolo quanti pezzi fisicamente rientrano nel carico utile del mezzo (24t)
     max_pezzi_per_peso = max(1, int(portata_utile_kg / max(1.0, peso_unitario_trave_kg)))
-
     max_pezzi_per_viaggio_travi = max_pezzi_per_peso
     viaggi_travi = math.ceil(num_travi_falda / max_pezzi_per_viaggio_travi)
 
     max_h_pilastro = max(h_gronda, h_colmo)
-    if max_h_pilastro <= 16.50:
-        mezzo_pilastri = "Bilico standard Art. 61 CDS"
-    else:
-        mezzo_pilastri = "Trasporto Eccezionale - Allungabile per pilastri"
+    if max_h_pilastro <= 16.50: mezzo_pilastri = "Bilico standard Art. 61 CDS"
+    else: mezzo_pilastri = "Trasporto Eccezionale - Allungabile per pilastri"
         
     peso_unitario_pilastro_kg = max_h_pilastro * 50.0
     max_pezzi_pilastro_peso = max(1, int(portata_utile_kg / max(1.0, peso_unitario_pilastro_kg)))
     max_pezzi_per_viaggio_pilastri = max_pezzi_pilastro_peso
-    
     viaggi_pilastri = math.ceil(num_pilastri / max_pezzi_per_viaggio_pilastri)
 
     ml_tot_profili = distinta['ml_arcarecci'] + dati.get('ml_baraccatura_tot', 0) + dati.get('ml_tot_timpani_entrambe', 0) + dati.get('ml_tot_montanti_long_entrambe', 0)
@@ -588,25 +574,15 @@ def calcola_logistica_trasporti(dati, distinta):
     mq_tot_rivestimenti = distinta['mq_copertura'] + distinta['mq_pareti_lunghe'] + distinta['mq_timpani']
     viaggi_pannelli = max(1, math.ceil(mq_tot_rivestimenti / 550.0))
     viaggi_accessori = 1
-
     tot_viaggi = viaggi_travi + viaggi_pilastri + viaggi_profili + viaggi_pannelli + viaggi_accessori
 
     return {
-        "max_lunghezza_trave": round(max_lunghezza_trave, 2),
-        "mezzo_travi": mezzo_travi,
-        "viaggi_travi": viaggi_travi,
-        "qta_effettiva_travi": max_pezzi_per_viaggio_travi,
-        "mezzo_pilastri": mezzo_pilastri,
-        "viaggi_pilastri": viaggi_pilastri,
-        "ml_tot_profili": round(ml_tot_profili, 1),
-        "viaggi_profili": viaggi_profili,
-        "mq_tot_rivestimenti": round(mq_tot_rivestimenti, 1),
-        "viaggi_pannelli": viaggi_pannelli,
-        "viaggi_accessori": viaggi_accessori,
-        "tot_viaggi": tot_viaggi
+        "max_lunghezza_trave": round(max_lunghezza_trave, 2), "mezzo_travi": mezzo_travi, "viaggi_travi": viaggi_travi,
+        "qta_effettiva_travi": max_pezzi_per_viaggio_travi, "mezzo_pilastri": mezzo_pilastri, "viaggi_pilastri": viaggi_pilastri,
+        "ml_tot_profili": round(ml_tot_profili, 1), "viaggi_profili": viaggi_profili, "mq_tot_rivestimenti": round(mq_tot_rivestimenti, 1),
+        "viaggi_pannelli": viaggi_pannelli, "viaggi_accessori": viaggi_accessori, "tot_viaggi": tot_viaggi
     }
 
-# --- FUNZIONE PER GENERARE IL DOCUMENTO WORD STANDARD ---
 def genera_word_report(dati, distinta, logistica):
     doc = Document()
     doc.add_heading('Relazione Tecnica di Predimensionamento, Calcolo e Logistica (NTC 2018)', 0)
@@ -669,7 +645,6 @@ def genera_word_report(dati, distinta, logistica):
     file_stream.seek(0)
     return file_stream
 
-# --- FUNZIONE PER GENERARE IL MODELLO 3D DINAMICO ---
 def genera_modello_3d(dati):
     fig = go.Figure()
     luce_totale = dati.get('luce_totale', 39.6)
@@ -830,6 +805,80 @@ def genera_modello_3d(dati):
     )
     return fig
 
+# --- FUNZIONI DI CALCOLO XLAM E PROPRIETA' EFFICACI ---
+def calcola_proprieta_efficaci_xlam(strati, orientamento, def_fuoco=0):
+    strati_eff = list(strati)
+    rimosso = def_fuoco
+    # Carbonizzazione dal basso (strati_eff[-1] è lo strato inferiore)
+    for i in range(len(strati_eff)-1, -1, -1):
+        if rimosso >= strati_eff[i]:
+            rimosso -= strati_eff[i]
+            strati_eff[i] = 0
+        else:
+            strati_eff[i] -= rimosso
+            rimosso = 0
+            break
+
+    A_eff = 0
+    S_eff = 0
+    y_curr = 0
+    for i in range(len(strati_eff)):
+        t = strati_eff[i]
+        if orientamento[i] == 1 and t > 0:
+            y_centro = y_curr + t/2
+            A_eff += t
+            S_eff += t * y_centro
+        y_curr += t
+        
+    if A_eff == 0: return 0, 0 
+        
+    y_g = S_eff / A_eff
+    
+    I_eff = 0
+    y_curr = 0
+    for i in range(len(strati_eff)):
+        t = strati_eff[i]
+        if orientamento[i] == 1 and t > 0:
+            y_centro = y_curr + t/2
+            I_strato = (1.0 * t**3) / 12  
+            I_eff += I_strato + t * (y_centro - y_g)**2
+        y_curr += t
+        
+    I_eff *= 0.85 # Metodo gamma approssimato k_sys
+    
+    y_top_long = -1
+    y_bot_long = -1
+    y_c = 0
+    for i in range(len(strati_eff)):
+        t = strati_eff[i]
+        if orientamento[i] == 1 and t > 0:
+            if y_top_long == -1: y_top_long = y_c
+            y_bot_long = y_c + t
+        y_c += t
+        
+    dist_top = abs(y_top_long - y_g) if y_top_long != -1 else 1
+    dist_bot = abs(y_bot_long - y_g) if y_bot_long != -1 else 1
+    y_max = max(dist_top, dist_bot)
+    
+    W_eff = I_eff / y_max if y_max > 0 else 0
+    return I_eff, W_eff
+
+# Database stratigrafie tipiche Stora Enso per solai
+pannelli_xlam_db = [
+    {"nome": "CLT 90 C3s", "spessore": 90, "strati": [30, 30, 30], "orientamento": [1, 0, 1]},
+    {"nome": "CLT 100 C3s", "spessore": 100, "strati": [33, 34, 33], "orientamento": [1, 0, 1]},
+    {"nome": "CLT 120 C3s", "spessore": 120, "strati": [40, 40, 40], "orientamento": [1, 0, 1]},
+    {"nome": "CLT 100 C5s", "spessore": 100, "strati": [20, 20, 20, 20, 20], "orientamento": [1, 0, 1, 0, 1]},
+    {"nome": "CLT 120 C5s", "spessore": 120, "strati": [24, 24, 24, 24, 24], "orientamento": [1, 0, 1, 0, 1]},
+    {"nome": "CLT 140 C5s", "spessore": 140, "strati": [40, 20, 20, 20, 40], "orientamento": [1, 0, 1, 0, 1]},
+    {"nome": "CLT 160 C5s", "spessore": 160, "strati": [40, 20, 40, 20, 40], "orientamento": [1, 0, 1, 0, 1]},
+    {"nome": "CLT 180 C5s", "spessore": 180, "strati": [40, 30, 40, 30, 40], "orientamento": [1, 0, 1, 0, 1]},
+    {"nome": "CLT 200 C5s", "spessore": 200, "strati": [40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 1]},
+    {"nome": "CLT 240 C7s", "spessore": 240, "strati": [40, 30, 30, 40, 30, 30, 40], "orientamento": [1, 0, 1, 0, 1, 0, 1]},
+    {"nome": "CLT 280 C7s", "spessore": 280, "strati": [40, 40, 40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 1, 0, 1]}
+]
+
+
 st.set_page_config(page_title="Predimensionamento Strutturale NTC 2018", layout="wide")
 st.title("Generatore Offerte Tecniche e Dimensionamento IA 🏗️")
 
@@ -849,330 +898,462 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
-st.subheader("Analisi Capitolato / Appunti di Progetto e File (CAD o PDF)")
-file_caricato = st.file_uploader("📂 Carica un file CAD (.dxf) o un documento PDF (.pdf)", type=["dxf", "pdf"])
+tab_principale, tab_xlam = st.tabs(["🏗️ Struttura Principale Capannone (NTC 2018)", "🪵 Dimensionamento Solaio XLAM"])
 
-testo_estratto_file = ""
-if file_caricato is not None:
-    estensione = file_caricato.name.split('.')[-1].lower()
-    try:
-        if estensione == 'dxf':
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp_file:
-                tmp_file.write(file_caricato.getvalue())
-                tmp_path = tmp_file.name
-            doc_dxf = ezdxf.readfile(tmp_path)
-            msp = doc_dxf.modelspace()
-            testi_estratto = [entity.dxf.text for entity in msp if entity.dxftype() == 'TEXT'] + [entity.text for entity in msp if entity.dxftype() == 'MTEXT']
-            testo_estratto_file = "\n".join(testi_estratto)
-            st.success(f"File CAD '{file_caricato.name}' letto con successo!")
-            os.unlink(tmp_path)
-        elif estensione == 'pdf':
-            pdf_reader = PyPDF2.PdfReader(file_caricato)
-            testi_pdf = [page.extract_text() for page in pdf_reader.pages if page.extract_text()]
-            testo_estratto_file = "\n".join(testi_pdf)
-            st.success(f"File PDF '{file_caricato.name}' letto con successo!")
-    except Exception as e:
-        st.error(f"Errore nella lettura del file: {e}")
+with tab_principale:
+    st.subheader("Analisi Capitolato / Appunti di Progetto e File (CAD o PDF)")
+    file_caricato = st.file_uploader("📂 Carica un file CAD (.dxf) o un documento PDF (.pdf)", type=["dxf", "pdf"])
 
-testo_commerciale = st.text_area("Incolla qui le note del progetto o il capitolato:", height=100, value="", key="testo_commerciale")
+    testo_estratto_file = ""
+    if file_caricato is not None:
+        estensione = file_caricato.name.split('.')[-1].lower()
+        try:
+            if estensione == 'dxf':
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp_file:
+                    tmp_file.write(file_caricato.getvalue())
+                    tmp_path = tmp_file.name
+                doc_dxf = ezdxf.readfile(tmp_path)
+                msp = doc_dxf.modelspace()
+                testi_estratto = [entity.dxf.text for entity in msp if entity.dxftype() == 'TEXT'] + [entity.text for entity in msp if entity.dxftype() == 'MTEXT']
+                testo_estratto_file = "\n".join(testi_estratto)
+                st.success(f"File CAD '{file_caricato.name}' letto con successo!")
+                os.unlink(tmp_path)
+            elif estensione == 'pdf':
+                pdf_reader = PyPDF2.PdfReader(file_caricato)
+                testi_pdf = [page.extract_text() for page in pdf_reader.pages if page.extract_text()]
+                testo_estratto_file = "\n".join(testi_pdf)
+                st.success(f"File PDF '{file_caricato.name}' letto con successo!")
+        except Exception as e:
+            st.error(f"Errore nella lettura del file: {e}")
 
-st.markdown("### 📍 Localizzazione Cantiere (Google Maps e Comune)")
-col_loc1, col_loc2 = st.columns([2, 1])
-with col_loc1:
-    maps_url_ui = st.text_input("Incolla il link di Google Maps del cantiere:", value="", key="maps_url_ui")
-with col_loc2:
-    _, _, luogo_estratto_url = estrai_dati_da_url_maps(maps_url_ui)
-    comune_cantiere_ui = st.text_input("Comune di installazione", value=luogo_estratto_url, key="comune_cantiere_ui")
+    testo_commerciale = st.text_area("Incolla qui le note del progetto o il capitolato:", height=100, value="", key="testo_commerciale")
 
-st.markdown("### 📐 Dimensioni Geometriche dell'Edificio (Modificabili)")
-col_dim1, col_dim2, col_dim3, col_dim4, col_dim5 = st.columns(5)
-with col_dim1: lunghezza_edificio_ui = st.number_input("Lunghezza Edificio (m)", min_value=0.0, value=25.0, step=1.0, format="%.1f", key="lunghezza_edificio_ui")
-with col_dim2: interasse_portali_ui = st.number_input("Interasse Portali (m)", min_value=0.0, value=5.0, step=0.5, format="%.2f", key="interasse_portali_ui")
-with col_dim3: luce_totale_ui = st.number_input("Luce Totale / Larghezza (m)", min_value=0.0, value=39.6, step=0.1, format="%.2f", key="luce_totale_ui")
-with col_dim4: altezza_gronda_ui = st.number_input("Altezza Gronda (m)", min_value=0.0, value=9.0, step=0.5, format="%.1f", key="altezza_gronda_ui")
-with col_dim5: altezza_colmo_ui = st.number_input("Altezza Colmo (m)", min_value=0.0, value=12.21, step=0.01, format="%.2f", key="altezza_colmo_ui")
+    st.markdown("### 📍 Localizzazione Cantiere (Google Maps e Comune)")
+    col_loc1, col_loc2 = st.columns([2, 1])
+    with col_loc1:
+        maps_url_ui = st.text_input("Incolla il link di Google Maps del cantiere:", value="", key="maps_url_ui")
+    with col_loc2:
+        _, _, luogo_estratto_url = estrai_dati_da_url_maps(maps_url_ui)
+        comune_cantiere_ui = st.text_input("Comune di installazione", value=luogo_estratto_url, key="comune_cantiere_ui")
 
-st.markdown("### 🏛️ Configurazione Telaio e Travatura")
-col_g1, col_g2, col_g3 = st.columns(3)
-with col_g1:
-    categoria_struttura = st.selectbox("Categoria Struttura Principale", ["Portali ad anima piena", "Capriate", "Travi Reticolari"], key="cat_strutt")
-    if categoria_struttura == "Portali ad anima piena":
-        tipo_travatura = st.selectbox("Tipologia Travatura", ["Bi-falda semplice", "Bi-falda con intradosso curvo", "Trave di falda giuntata in colmo"], key="tipo_travatura")
-    elif categoria_struttura == "Capriate":
-        tipo_travatura = st.selectbox("Tipologia Capriata", ["Semplice", "Con Monaco", "Classica o alla Palladiana", "Composta o a doppia catena"], key="tipo_travatura")
-    else:
-        tipo_travatura = st.selectbox("Tipologia Reticolare", ["Travatura Warren", "Travatura Long", "Travatura Howe", "Travatura Vierendeel", "Travatura Pratt"], key="tipo_travatura")
-with col_g2:
-    num_appoggi = st.selectbox("Numero Appoggi Telaio", [2, 3, 4], index=1, format_func=lambda x: f"{x} Appoggi", key="num_appoggi")
-with col_g3:
-    posizione_arc = st.radio("Posizionamento Arcarecci", ["Sopra i telai (Continuo)", "In luce (Semplice appoggio)"], key="pos_arcarecci")
+    st.markdown("### 📐 Dimensioni Geometriche dell'Edificio (Modificabili)")
+    col_dim1, col_dim2, col_dim3, col_dim4, col_dim5 = st.columns(5)
+    with col_dim1: lunghezza_edificio_ui = st.number_input("Lunghezza Edificio (m)", min_value=0.0, value=25.0, step=1.0, format="%.1f", key="lunghezza_edificio_ui")
+    with col_dim2: interasse_portali_ui = st.number_input("Interasse Portali (m)", min_value=0.0, value=5.0, step=0.5, format="%.2f", key="interasse_portali_ui")
+    with col_dim3: luce_totale_ui = st.number_input("Luce Totale / Larghezza (m)", min_value=0.0, value=39.6, step=0.1, format="%.2f", key="luce_totale_ui")
+    with col_dim4: altezza_gronda_ui = st.number_input("Altezza Gronda (m)", min_value=0.0, value=9.0, step=0.5, format="%.1f", key="altezza_gronda_ui")
+    with col_dim5: altezza_colmo_ui = st.number_input("Altezza Colmo (m)", min_value=0.0, value=12.21, step=0.01, format="%.2f", key="altezza_colmo_ui")
 
-st.markdown("### ⚙️ Parametri Carichi di Copertura e Pannellature")
-col_c1, col_c2, col_c3 = st.columns(3)
-with col_c1:
-    tipo_isolante = st.selectbox("Tipologia Pannello Copertura", ["PIR / PUR", "Lana Minerale", "Lamiera Grecata Semplice"], key="tipo_isolante")
-    if tipo_isolante == "PIR / PUR": spessore_pannello = st.selectbox("Spessore Pannello (mm)", [50, 60, 80, 100, 120], key="spessore_panni_pir")
-    elif tipo_isolante == "Lana Minerale": spessore_pannello = st.selectbox("Spessore Pannello (mm)", [100, 120, 150, 170], key="spessore_panni_lana")
-    else: spessore_pannello = 0
-with col_c2:
-    st.write("")
-    st.write("")
-    impianto_fv = st.checkbox("Impianto Fotovoltaico in Copertura (20 kg/mq)", value=False, key="impianto_fv")
-with col_c3:
-    carico_aggiuntivo = st.number_input("Carico aggiuntivo manuale (kN/mq)", min_value=0.0, value=0.0, step=0.05, format="%.2f", key="carico_aggiuntivo")
-
-st.markdown("### 🧱 Rivestimento Parete")
-col_p1, col_p2 = st.columns(2)
-with col_p1:
-    tipo_isolante_parete = st.selectbox("Tipologia Pannello Parete", ["PIR / PUR", "Lana di Roccia", "Lamiera Semplice", "Nessuno (Aperto)"], key="tipo_isolante_parete")
-with col_p2:
-    if tipo_isolante_parete == "PIR / PUR": spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [50, 60, 80, 100, 120], key="spessore_parete_pir")
-    elif tipo_isolante_parete == "Lana di Roccia": spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [80, 100, 120, 150], key="spessore_parete_lana")
-    else: spessore_pannello_parete = 0
-
-st.markdown("### 🔥 Requisiti Antincendio e Durabilità (NTC 2018)")
-col_f1, col_f2 = st.columns(2)
-with col_f1:
-    classe_fuoco_ui = st.selectbox("Classe di Resistenza al Fuoco", ["R 0 (Nessun requisito)", "R 60", "R 90", "R 120"], index=1, key="classe_fuoco_ui")
-with col_f2:
-    classe_servizio_ui = st.selectbox("Classe di Servizio (Legno EN 1995-1-1)", ["Classe 1 (Interno asciutto)", "Classe 2 (Umidità < 85%)", "Classe 3 (Esterno esposto)"], index=1, key="classe_servizio_ui")
-
-if st.button("Esegui Dimensionamento, Logistica e Genera Modello 3D", type="primary"):
-    if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or altezza_colmo_ui <= 0:
-        st.warning("⚠️ Inserisci tutte le dimensioni geometriche con valori superiori a zero prima di eseguire il calcolo.")
-    else:
-        lat_estratta, lon_estratta, place_url = estrai_dati_da_url_maps(maps_url_ui)
-        comune_finale = comune_cantiere_ui if comune_cantiere_ui else place_url
-        
-        num_campate_calc = max(1, int(round(lunghezza_edificio_ui / interasse_portali_ui)))
-        impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
-        
-        dati_base = {
-            'lunghezza_edificio': lunghezza_edificio_ui, 'interasse_portali': interasse_portali_ui,
-            'luce_totale': luce_totale_ui, 'altezza_gronda': altezza_gronda_ui, 'altezza_colmo': altezza_colmo_ui,
-            'num_campate': num_campate_calc,
-            'categoria_struttura': categoria_struttura, 'tipo_travatura': tipo_travatura, 'num_appoggi': num_appoggi,
-            'posizione_arcarecci': posizione_arc, 'tipo_isolante': tipo_isolante,
-            'spessore_pannello': f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice",
-            'tipo_isolante_parete': tipo_isolante_parete,
-            'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
-            'impianto_fv_desc': impianto_fv_desc, 'carico_aggiuntivo': carico_aggiuntivo,
-            'latitudine': lat_estratta, 'longitudine': lon_estratta, 'comune': comune_finale,
-            'classe_fuoco': classe_fuoco_ui,
-            'classe_servizio': classe_servizio_ui
-        }
-
-        if modalita_deterministica:
-            with st.spinner('Estrazione coordinate ed esecuzione calcolo deterministico NTC 2018...'):
-                dati = esegui_calcolo_deterministico(dati_base)
-                dati.update(dati_base)
-                dati['distinta'] = calcola_distinta_elementi(dati)
-                dati['logistica'] = calcola_logistica_trasporti(dati, dati['distinta'])
-                st.session_state['dati_ultimi'] = dati
-                st.success("Calcolo strutturale e piano logistico completati con successo!")
+    st.markdown("### 🏛️ Configurazione Telaio e Travatura")
+    col_g1, col_g2, col_g3 = st.columns(3)
+    with col_g1:
+        categoria_struttura = st.selectbox("Categoria Struttura Principale", ["Portali ad anima piena", "Capriate", "Travi Reticolari"], key="cat_strutt")
+        if categoria_struttura == "Portali ad anima piena":
+            tipo_travatura = st.selectbox("Tipologia Travatura", ["Bi-falda semplice", "Bi-falda con intradosso curvo", "Trave di falda giuntata in colmo"], key="tipo_travatura")
+        elif categoria_struttura == "Capriate":
+            tipo_travatura = st.selectbox("Tipologia Capriata", ["Semplice", "Con Monaco", "Classica o alla Palladiana", "Composta o a doppia catena"], key="tipo_travatura")
         else:
-            if not api_key:
-                st.error("Inserisci prima l'API Key di Google nella barra laterale!")
-            else:
-                dati_config_str = f"Luce: {luce_totale_ui}m, Lunghezza: {lunghezza_edificio_ui}m, Categoria: {categoria_struttura}"
-                genai.configure(api_key=api_key)
-                try:
-                    model = genai.GenerativeModel(model_name='gemini-3.6-flash', generation_config={"response_mime_type": "application/json", "temperature": 0.0})
-                    prompt = "Restituisci JSON valido con parametri strutturali NTC 2018 per: " + dati_config_str
-                    with st.spinner('Elaborazione con IA...'):
-                        risposta_ia = model.generate_content(prompt)
-                        testo_risposta = risposta_ia.text.strip()
-                        if testo_risposta.startswith("```json"): testo_risposta = testo_risposta[7:]
-                        if testo_risposta.startswith("```"): testo_risposta = testo_risposta[3:]
-                        if testo_risposta.endswith("```"): testo_risposta = testo_risposta[:-3]
-                        dati = json.loads(testo_risposta.strip())
-                        dati.update(dati_base)
-                        risultati_strutturali = esegui_calcolo_deterministico(dati)
-                        dati.update(risultati_strutturali)
-                        dati['distinta'] = calcola_distinta_elementi(dati)
-                        dati['logistica'] = calcola_logistica_trasporti(dati, dati['distinta'])
-                        st.session_state['dati_ultimi'] = dati
-                        st.success("Modello IA calcolato con successo!")
-                except Exception as e:
-                    st.error(f"Errore IA: {e}")
+            tipo_travatura = st.selectbox("Tipologia Reticolare", ["Travatura Warren", "Travatura Long", "Travatura Howe", "Travatura Vierendeel", "Travatura Pratt"], key="tipo_travatura")
+    with col_g2:
+        num_appoggi = st.selectbox("Numero Appoggi Telaio", [2, 3, 4], index=1, format_func=lambda x: f"{x} Appoggi", key="num_appoggi")
+    with col_g3:
+        posizione_arc = st.radio("Posizionamento Arcarecci", ["Sopra i telai (Continuo)", "In luce (Semplice appoggio)"], key="pos_arcarecci")
 
-if 'dati_ultimi' in st.session_state:
-    dati = st.session_state['dati_ultimi']
-    distinta = dati.get('distinta', calcola_distinta_elementi(dati))
-    logistica = dati.get('logistica', calcola_logistica_trasporti(dati, distinta))
-    st.markdown("---")
-    
-    col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
-    with col_dl2:
-        word_file = genera_word_report(dati, distinta, logistica)
-        st.download_button(label="📄 Scarica Relazione, Computo e Piano Logistico in Word (.docx)", data=word_file, file_name=f"Relazione_Logistica_{dati.get('luogo', 'Progetto').replace(' ', '_').replace(':', '')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", type="primary", use_container_width=True)
-    
-    st.markdown("---")
-    st.markdown("### 🚚 Piano Logistico e Calcolo Viaggi di Trasporto (Flotta Veneta Trasporti)")
-    c_l1, c_l2, c_l3 = st.columns(3)
-    c_l1.metric("Totale Viaggi Stimati", f"{logistica.get('tot_viaggi', 0)} Viaggi", "Ottimizzato Costo/Portata (max 24t)", delta_color="off")
-    c_l2.metric("Mezzo Travi / Capriate", logistica.get('mezzo_travi', 'N.D.'), f"N° {logistica.get('viaggi_travi', 0)} Viaggi (Max {logistica.get('qta_effettiva_travi', 1)} pz/viaggio)")
-    c_l3.metric("Mezzo Pilastri", logistica.get('mezzo_pilastri', 'N.D.'), f"N° {logistica.get('viaggi_pilastri', 0)} Viaggi", delta_color="off")
+    st.markdown("### ⚙️ Parametri Carichi di Copertura e Pannellature")
+    col_c1, col_c2, col_c3 = st.columns(3)
+    with col_c1:
+        tipo_isolante = st.selectbox("Tipologia Pannello Copertura", ["PIR / PUR", "Lana Minerale", "Lamiera Grecata Semplice"], key="tipo_isolante")
+        if tipo_isolante == "PIR / PUR": spessore_pannello = st.selectbox("Spessore Pannello (mm)", [50, 60, 80, 100, 120], key="spessore_panni_pir")
+        elif tipo_isolante == "Lana Minerale": spessore_pannello = st.selectbox("Spessore Pannello (mm)", [100, 120, 150, 170], key="spessore_panni_lana")
+        else: spessore_pannello = 0
+    with col_c2:
+        st.write("")
+        st.write("")
+        impianto_fv = st.checkbox("Impianto Fotovoltaico in Copertura (20 kg/mq)", value=False, key="impianto_fv")
+    with col_c3:
+        carico_aggiuntivo = st.number_input("Carico aggiuntivo manuale (kN/mq)", min_value=0.0, value=0.0, step=0.05, format="%.2f", key="carico_aggiuntivo")
 
-    c_l4, c_l5, c_l6 = st.columns(3)
-    c_l4.metric("Arcarecci e Baraccatura", f"N° {logistica.get('viaggi_profili', 0)} Viaggi", f"Tot: {logistica.get('ml_tot_profili', 0)} ml", delta_color="off")
-    c_l5.metric("Pannelli e Copertura", f"N° {logistica.get('viaggi_pannelli', 0)} Viaggi", f"Area: {logistica.get('mq_tot_rivestimenti', 0)} mq", delta_color="off")
-    c_l6.metric("Accessori e Connessioni", f"N° {logistica.get('viaggi_accessori', 1)} Viaggio", "Bulloneria e piastre", delta_color="off")
-
-    st.markdown("---")
-    st.markdown("### 🌐 Modello 3D Dinamico della Struttura")
-    fig_3d = genera_modello_3d(dati)
-    st.plotly_chart(fig_3d, use_container_width=True)
-    
-    st.markdown("---")
-    st.markdown("### 📋 1. Distinta Elementi Principali (Computo Quantità)")
-    c_e1, c_e2, c_e3, c_e4 = st.columns(4)
-    c_e1.metric("Telai Principali", f"{distinta['num_telai']} pz")
-    c_e2.metric("Pilastri Totali", f"{distinta['num_pilastri_totali']} pz", f"{distinta['num_pilastri_perimetrali']} Per. | {distinta['num_pilastri_interni']} Intermedi", delta_color="off")
-    c_e3.metric("Travi di Falda", f"{distinta['num_travi_falda']} pz")
-    c_e4.metric("File Arcarecci", f"{distinta['num_file_arcarecci']} file", f"Tot: {distinta['ml_arcarecci']} ml", delta_color="off")
-
-    c_e5, c_e6, c_e7, c_e8 = st.columns(4)
-    c_e5.metric("Moduli Controvento Cop.", f"{distinta['num_croci_copertura']} croci")
-    c_e6.metric("Moduli Controvento Parete", f"{distinta['num_croci_parete']} croci")
-    c_e7.metric("Superficie Copertura", f"{distinta['mq_copertura']} mq")
-    c_e8.metric("Superficie Pareti Longitudinali", f"{distinta['mq_pareti_lunghe']} mq")
-
-    st.markdown("---")
-    st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Località / Comune", dati.get("luogo", "N.D."))
-    c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
-    c3.metric("Zona Vento", dati.get("zona_vento", "N.D."))
-    c4.metric("Pressione Vento", dati.get("pressione_vento", "N.D."))
-    
-    c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Azione Sismica", dati.get("zona_sismica", "N.D."))
-    c6.metric("Luce Totale", f"{dati.get('luce_totale')} m")
-    c7.metric("Struttura Princ.", dati.get('categoria_struttura', 'N.D.'))
-    c8.metric("Tipologia Travatura", dati.get("tipo_travatura", "Bi-falda semplice"))
-    
-    st.info(f"🏗️ **Copertura configurata:** Pannello {dati.get('tipo_isolante')} ({dati.get('spessore_pannello')}) | **Impianto FV:** {dati.get('impianto_fv_desc')} | **Carico Extra:** {dati.get('carico_aggiuntivo', 0.0)} kN/mq")
-    
-    st.markdown("---")
-    st.markdown("### 🪵 3. Arcarecci di Copertura")
-    st.info(f"**Passo Calcolato Arcarecci:** {dati.get('passo_arcarecci_calc', 1.5):.2f} m | **Posizione:** {dati.get('posizione_arcarecci', 'Sopra i telai')}  \n- **Sezione Acciaio:** {dati.get('sezione_arcarecci', 'N.D.')}  \n- **Sezione Legno:** {dati.get('sezione_arcarecci_legno', 'N.D.')}")
-    st.write(f"**Verifica Flessionale:** {dati.get('verifica_arcarecci', 'Verificato')}")
-    
-    st.markdown("---")
-    st.markdown("### 🧱 4. Baraccatura di Parete (Supporto Rivestimento)")
-    st.write(f"**Pannello Facciata:** {dati.get('tipo_isolante_parete', 'N.D.')} ({dati.get('spessore_pannello_parete', 'N.D.')})")
-    st.success(f"**Passo Calcolato Baraccatura:** {dati.get('passo_baraccatura_calc', 2.0):.2f} m")
-    st.write(f"- Sviluppo lineare baraccatura **Parete Longitudinale** (singola): {dati.get('ml_baraccatura_long_singola', 0)} ml")
-    st.write(f"- Sviluppo lineare baraccatura **Timpano Frontale** (singolo): {dati.get('ml_baraccatura_timpani_singolo', 0)} ml")
-    
-    col_b1, col_b2, col_b3 = st.columns(3)
-    with col_b1:
-        st.markdown("#### 🌲 Legno Lamellare")
-        st.success(dati.get('baraccatura_legno_lamellare', 'N.D.'))
-    with col_b2:
-        st.markdown("#### 🪵 Legno Massiccio")
-        st.success(dati.get('baraccatura_legno_massiccio', 'N.D.'))
-    with col_b3:
-        st.markdown("#### ⚙️ Acciaio")
-        st.warning(dati.get('baraccatura_acciaio', 'N.D.'))
-
-    st.markdown("---")
-    st.markdown("### 🏛️ 4.1 Montanti Verticali Antivento")
-    col_m1, col_m2 = st.columns(2)
-    with col_m1:
-        st.markdown("#### 📐 Pareti Frontali (Timpani)")
-        st.write(f"**N° Montanti per singola facciata:** {dati.get('num_montanti_timpano_singolo', 0)}")
-        if dati.get('num_montanti_timpano_singolo', 0) > 0:
-            st.write(f"**Passo d'installazione:** {dati.get('passo_montanti_timpano', 0):.2f} m")
-            st.write(f"**Sviluppo Totale (Entrambe le facciate):** {dati.get('ml_tot_timpani_entrambe', 0):.2f} ml")
-        else:
-            st.info("💡 Luce contenuta, nessun montante intermedio richiesto.")
-    with col_m2:
-        st.markdown("#### 📏 Pareti Longitudinali")
-        st.write(f"**N° Montanti per singola parete lunga:** {dati.get('num_montanti_long_singola_parete', 0)}")
-        if dati.get('num_montanti_long_singola_parete', 0) > 0:
-            st.write(f"**Passo d'installazione:** {dati.get('passo_montanti_long', 0):.2f} m")
-            st.write(f"**Sviluppo Totale (Entrambe le pareti):** {dati.get('ml_tot_montanti_long_entrambe', 0):.2f} ml")
-        else:
-            st.info("💡 Interasse portali entro i 6m, nessun montante intermedio richiesto.")
-
-    st.markdown("---")
-    st.markdown("### 📐 5. Struttura Principale / Travatura (Dimensionamento)")
-    if dati.get('categoria_struttura') in ["Capriate", "Travi Reticolari"]:
-        col_t1, col_t2 = st.columns(2)
-        with col_t1:
-            st.markdown("#### 🌲 Variante in Legno")
-            st.success(dati.get('travi_legno', 'N.D.').replace('\n', '  \n'))
-        with col_t2:
-            st.markdown("#### ⚙️ Variante in Acciaio")
-            st.warning(dati.get('travi_acciaio', 'N.D.').replace('\n', '  \n'))
-    else:
-        col_t1, col_t2, col_t3 = st.columns(3)
-        with col_t1:
-            st.markdown("#### 🌲 Legno Lamellare")
-            st.success(dati.get('travi_legno', 'N.D.'))
-        with col_t2:
-            st.markdown("#### ⚙️ Acciaio")
-            st.warning(dati.get('travi_acciaio', 'N.D.'))
-        with col_t3:
-            st.markdown("#### 🏛️ C.a.p.")
-            st.error(dati.get('travi_cap', 'N.D.'))
-    
-    st.markdown("---")
-    st.markdown("### 🏛️ 6. Pilastri (Perimetrali e Intermedi)")
-    col_p1, col_p2, col_p3 = st.columns(3)
+    st.markdown("### 🧱 Rivestimento Parete")
+    col_p1, col_p2 = st.columns(2)
     with col_p1:
-        st.markdown("#### 🌲 Legno Lamellare")
-        st.success(dati.get('pilastri_perimetrali_legno', 'N.D.'))
+        tipo_isolante_parete = st.selectbox("Tipologia Pannello Parete", ["PIR / PUR", "Lana di Roccia", "Lamiera Semplice", "Nessuno (Aperto)"], key="tipo_isolante_parete")
     with col_p2:
-        st.markdown("#### ⚙️ Acciaio")
-        st.warning(dati.get('pilastri_perimetrali_acciaio', 'N.D.'))
-    with col_p3:
-        st.markdown("#### 🏛️ C.a.p.")
-        st.error(dati.get('pilastri_perimetrali_cap', 'N.D.'))
-    
-    st.markdown("---")
-    st.markdown("### 🔗 7. Stabilizzazione e Controventi")
-    col_cv1, col_cv2 = st.columns(2)
-    with col_cv1:
-        st.markdown("#### 🛡️ Controventi di Copertura")
-        st.info(f"Legno: {dati.get('controventi_copertura_legno')} | Acciaio: {dati.get('controventi_copertura_acciaio')}")
-    with col_cv2:
-        st.markdown("#### 🧱 Controventi di Parete")
-        st.warning(f"Legno: {dati.get('controventi_parete_legno')} | Acciaio: {dati.get('controventi_parete_acciaio')}")
+        if tipo_isolante_parete == "PIR / PUR": spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [50, 60, 80, 100, 120], key="spessore_parete_pir")
+        elif tipo_isolante_parete == "Lana di Roccia": spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [80, 100, 120, 150], key="spessore_parete_lana")
+        else: spessore_pannello_parete = 0
 
-    st.markdown("---")
-    st.markdown("### 🔩 8. Dimensionamento Dettagliato Connessioni, Nodi e Giunti in Colmo")
-    col_n1, col_n2 = st.columns(2)
-    with col_n1:
-        st.markdown("#### 🔗 Connessione Pilastro / Trave")
-        st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
-        st.write(f"- **Nodi Perimetrali:** {dati.get('conn_trave_pilastro_perim_elementi', 'N.D.')}")
-        st.metric("Peso Acciaio Nodo Perimetrale", dati.get('conn_trave_pilastro_perim_kg', 'N.D.'))
-        st.write(f"- **Nodi Intermedi:** {dati.get('conn_trave_pilastro_interm_elementi', 'N.D.')}")
-        st.metric("Peso Acciaio Nodo Intermedio", dati.get('conn_trave_pilastro_interm_kg', 'N.D.'))
-    with col_n2:
-        st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
-        st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
-        st.write(f"- **Ancoraggi Perimetrali:** {dati.get('conn_pilastro_fondazione_perim_elementi', 'N.D.')}")
-        st.metric("Peso Acciaio Base Perimetrale", dati.get('conn_pilast_fondazione_perim_kg', 'N.D.') if 'conn_pilast_fondazione_perim_kg' in dati else dati.get('conn_pilastro_fondazione_perim_kg', 'N.D.'))
-        st.write(f"- **Ancoraggi Intermedi:** {dati.get('conn_pilastro_fondazione_interm_elementi', 'N.D.')}")
-        st.metric("Peso Acciaio Base Intermedia", dati.get('conn_pilastro_fondazione_interm_kg', 'N.D.'))
-    
-    if "giuntata" in dati.get('tipo_travatura', '').lower():
-        st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
-
-    st.markdown("### 🔥 9. Requisiti di Resistenza al Fuoco e Durabilità")
-    col_f1, col_f2, col_f3 = st.columns(3)
+    st.markdown("### 🔥 Requisiti Antincendio e Durabilità (NTC 2018)")
+    col_f1, col_f2 = st.columns(2)
     with col_f1:
-        st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
+        classe_fuoco_ui = st.selectbox("Classe di Resistenza al Fuoco", ["R 0 (Nessun requisito)", "R 60", "R 90", "R 120"], index=1, key="classe_fuoco_ui")
     with col_f2:
-        st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
-    with col_f3:
-        st.metric("Classe di Servizio Legno", dati.get('classe_servizio', 'Classe 2').split(' (')[0])
-    st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
+        classe_servizio_ui = st.selectbox("Classe di Servizio (Legno EN 1995-1-1)", ["Classe 1 (Interno asciutto)", "Classe 2 (Umidità < 85%)", "Classe 3 (Esterno esposto)"], index=1, key="classe_servizio_ui")
+
+    if st.button("Esegui Dimensionamento, Logistica e Genera Modello 3D", type="primary"):
+        if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or altezza_colmo_ui <= 0:
+            st.warning("⚠️ Inserisci tutte le dimensioni geometriche con valori superiori a zero prima di eseguire il calcolo.")
+        else:
+            lat_estratta, lon_estratta, place_url = estrai_dati_da_url_maps(maps_url_ui)
+            comune_finale = comune_cantiere_ui if comune_cantiere_ui else place_url
+            
+            num_campate_calc = max(1, int(round(lunghezza_edificio_ui / interasse_portali_ui)))
+            impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
+            
+            dati_base = {
+                'lunghezza_edificio': lunghezza_edificio_ui, 'interasse_portali': interasse_portali_ui,
+                'luce_totale': luce_totale_ui, 'altezza_gronda': altezza_gronda_ui, 'altezza_colmo': altezza_colmo_ui,
+                'num_campate': num_campate_calc,
+                'categoria_struttura': categoria_struttura, 'tipo_travatura': tipo_travatura, 'num_appoggi': num_appoggi,
+                'posizione_arcarecci': posizione_arc, 'tipo_isolante': tipo_isolante,
+                'spessore_pannello': f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice",
+                'tipo_isolante_parete': tipo_isolante_parete,
+                'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
+                'impianto_fv_desc': impianto_fv_desc, 'carico_aggiuntivo': carico_aggiuntivo,
+                'latitudine': lat_estratta, 'longitudine': lon_estratta, 'comune': comune_finale,
+                'classe_fuoco': classe_fuoco_ui,
+                'classe_servizio': classe_servizio_ui
+            }
+
+            if modalita_deterministica:
+                with st.spinner('Estrazione coordinate ed esecuzione calcolo deterministico NTC 2018...'):
+                    dati = esegui_calcolo_deterministico(dati_base)
+                    dati.update(dati_base)
+                    dati['distinta'] = calcola_distinta_elementi(dati)
+                    dati['logistica'] = calcola_logistica_trasporti(dati, dati['distinta'])
+                    st.session_state['dati_ultimi'] = dati
+                    st.success("Calcolo strutturale e piano logistico completati con successo!")
+            else:
+                if not api_key:
+                    st.error("Inserisci prima l'API Key di Google nella barra laterale!")
+                else:
+                    dati_config_str = f"Luce: {luce_totale_ui}m, Lunghezza: {lunghezza_edificio_ui}m, Categoria: {categoria_struttura}"
+                    genai.configure(api_key=api_key)
+                    try:
+                        model = genai.GenerativeModel(model_name='gemini-3.6-flash', generation_config={"response_mime_type": "application/json", "temperature": 0.0})
+                        prompt = "Restituisci JSON valido con parametri strutturali NTC 2018 per: " + dati_config_str
+                        with st.spinner('Elaborazione con IA...'):
+                            risposta_ia = model.generate_content(prompt)
+                            testo_risposta = risposta_ia.text.strip()
+                            if testo_risposta.startswith("```json"): testo_risposta = testo_risposta[7:]
+                            if testo_risposta.startswith("```"): testo_risposta = testo_risposta[3:]
+                            if testo_risposta.endswith("```"): testo_risposta = testo_risposta[:-3]
+                            dati = json.loads(testo_risposta.strip())
+                            dati.update(dati_base)
+                            risultati_strutturali = esegui_calcolo_deterministico(dati)
+                            dati.update(risultati_strutturali)
+                            dati['distinta'] = calcola_distinta_elementi(dati)
+                            dati['logistica'] = calcola_logistica_trasporti(dati, dati['distinta'])
+                            st.session_state['dati_ultimi'] = dati
+                            st.success("Modello IA calcolato con successo!")
+                    except Exception as e:
+                        st.error(f"Errore IA: {e}")
+
+    if 'dati_ultimi' in st.session_state:
+        dati = st.session_state['dati_ultimi']
+        distinta = dati.get('distinta', calcola_distinta_elementi(dati))
+        logistica = dati.get('logistica', calcola_logistica_trasporti(dati, distinta))
+        st.markdown("---")
+        
+        col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
+        with col_dl2:
+            word_file = genera_word_report(dati, distinta, logistica)
+            st.download_button(label="📄 Scarica Relazione, Computo e Piano Logistico in Word (.docx)", data=word_file, file_name=f"Relazione_Logistica_{dati.get('luogo', 'Progetto').replace(' ', '_').replace(':', '')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", type="primary", use_container_width=True)
+        
+        st.markdown("---")
+        st.markdown("### 🚚 Piano Logistico e Calcolo Viaggi di Trasporto (Flotta Veneta Trasporti)")
+        c_l1, c_l2, c_l3 = st.columns(3)
+        c_l1.metric("Totale Viaggi Stimati", f"{logistica.get('tot_viaggi', 0)} Viaggi", "Ottimizzato Costo/Portata (max 24t)", delta_color="off")
+        c_l2.metric("Mezzo Travi / Capriate", logistica.get('mezzo_travi', 'N.D.'), f"N° {logistica.get('viaggi_travi', 0)} Viaggi (Max {logistica.get('qta_effettiva_travi', 1)} pz/viaggio)")
+        c_l3.metric("Mezzo Pilastri", logistica.get('mezzo_pilastri', 'N.D.'), f"N° {logistica.get('viaggi_pilastri', 0)} Viaggi", delta_color="off")
+
+        c_l4, c_l5, c_l6 = st.columns(3)
+        c_l4.metric("Arcarecci e Baraccatura", f"N° {logistica.get('viaggi_profili', 0)} Viaggi", f"Tot: {logistica.get('ml_tot_profili', 0)} ml", delta_color="off")
+        c_l5.metric("Pannelli e Copertura", f"N° {logistica.get('viaggi_pannelli', 0)} Viaggi", f"Area: {logistica.get('mq_tot_rivestimenti', 0)} mq", delta_color="off")
+        c_l6.metric("Accessori e Connessioni", f"N° {logistica.get('viaggi_accessori', 1)} Viaggio", "Bulloneria e piastre", delta_color="off")
+
+        st.markdown("---")
+        st.markdown("### 🌐 Modello 3D Dinamico della Struttura")
+        fig_3d = genera_modello_3d(dati)
+        st.plotly_chart(fig_3d, use_container_width=True)
+        
+        st.markdown("---")
+        st.markdown("### 📋 1. Distinta Elementi Principali (Computo Quantità)")
+        c_e1, c_e2, c_e3, c_e4 = st.columns(4)
+        c_e1.metric("Telai Principali", f"{distinta['num_telai']} pz")
+        c_e2.metric("Pilastri Totali", f"{distinta['num_pilastri_totali']} pz", f"{distinta['num_pilastri_perimetrali']} Per. | {distinta['num_pilastri_interni']} Intermedi", delta_color="off")
+        c_e3.metric("Travi di Falda", f"{distinta['num_travi_falda']} pz")
+        c_e4.metric("File Arcarecci", f"{distinta['num_file_arcarecci']} file", f"Tot: {distinta['ml_arcarecci']} ml", delta_color="off")
+
+        c_e5, c_e6, c_e7, c_e8 = st.columns(4)
+        c_e5.metric("Moduli Controvento Cop.", f"{distinta['num_croci_copertura']} croci")
+        c_e6.metric("Moduli Controvento Parete", f"{distinta['num_croci_parete']} croci")
+        c_e7.metric("Superficie Copertura", f"{distinta['mq_copertura']} mq")
+        c_e8.metric("Superficie Pareti Longitudinali", f"{distinta['mq_pareti_lunghe']} mq")
+
+        st.markdown("---")
+        st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Località / Comune", dati.get("luogo", "N.D."))
+        c2.metric("Carico Neve (qsk)", f"{dati.get('qsk', 1.5)} kN/m²")
+        c3.metric("Zona Vento", dati.get("zona_vento", "N.D."))
+        c4.metric("Pressione Vento", dati.get("pressione_vento", "N.D."))
+        
+        c5, c6, c7, c8 = st.columns(4)
+        c5.metric("Azione Sismica", dati.get("zona_sismica", "N.D."))
+        c6.metric("Luce Totale", f"{dati.get('luce_totale')} m")
+        c7.metric("Struttura Princ.", dati.get('categoria_struttura', 'N.D.'))
+        c8.metric("Tipologia Travatura", dati.get("tipo_travatura", "Bi-falda semplice"))
+        
+        st.info(f"🏗️ **Copertura configurata:** Pannello {dati.get('tipo_isolante')} ({dati.get('spessore_pannello')}) | **Impianto FV:** {dati.get('impianto_fv_desc')} | **Carico Extra:** {dati.get('carico_aggiuntivo', 0.0)} kN/mq")
+        
+        st.markdown("---")
+        st.markdown("### 🪵 3. Arcarecci di Copertura")
+        st.info(f"**Passo Calcolato Arcarecci:** {dati.get('passo_arcarecci_calc', 1.5):.2f} m | **Posizione:** {dati.get('posizione_arcarecci', 'Sopra i telai')}  \n- **Sezione Acciaio:** {dati.get('sezione_arcarecci', 'N.D.')}  \n- **Sezione Legno:** {dati.get('sezione_arcarecci_legno', 'N.D.')}")
+        st.write(f"**Verifica Flessionale:** {dati.get('verifica_arcarecci', 'Verificato')}")
+        
+        st.markdown("---")
+        st.markdown("### 🧱 4. Baraccatura di Parete (Supporto Rivestimento)")
+        st.write(f"**Pannello Facciata:** {dati.get('tipo_isolante_parete', 'N.D.')} ({dati.get('spessore_pannello_parete', 'N.D.')})")
+        st.success(f"**Passo Calcolato Baraccatura:** {dati.get('passo_baraccatura_calc', 2.0):.2f} m")
+        st.write(f"- Sviluppo lineare baraccatura **Parete Longitudinale** (singola): {dati.get('ml_baraccatura_long_singola', 0)} ml")
+        st.write(f"- Sviluppo lineare baraccatura **Timpano Frontale** (singolo): {dati.get('ml_baraccatura_timpani_singolo', 0)} ml")
+        
+        col_b1, col_b2, col_b3 = st.columns(3)
+        with col_b1:
+            st.markdown("#### 🌲 Legno Lamellare")
+            st.success(dati.get('baraccatura_legno_lamellare', 'N.D.'))
+        with col_b2:
+            st.markdown("#### 🪵 Legno Massiccio")
+            st.success(dati.get('baraccatura_legno_massiccio', 'N.D.'))
+        with col_b3:
+            st.markdown("#### ⚙️ Acciaio")
+            st.warning(dati.get('baraccatura_acciaio', 'N.D.'))
+
+        st.markdown("---")
+        st.markdown("### 🏛️ 4.1 Montanti Verticali Antivento")
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.markdown("#### 📐 Pareti Frontali (Timpani)")
+            st.write(f"**N° Montanti per singola facciata:** {dati.get('num_montanti_timpano_singolo', 0)}")
+            if dati.get('num_montanti_timpano_singolo', 0) > 0:
+                st.write(f"**Passo d'installazione:** {dati.get('passo_montanti_timpano', 0):.2f} m")
+                st.write(f"**Sviluppo Totale (Entrambe le facciate):** {dati.get('ml_tot_timpani_entrambe', 0):.2f} ml")
+            else:
+                st.info("💡 Luce contenuta, nessun montante intermedio richiesto.")
+        with col_m2:
+            st.markdown("#### 📏 Pareti Longitudinali")
+            st.write(f"**N° Montanti per singola parete lunga:** {dati.get('num_montanti_long_singola_parete', 0)}")
+            if dati.get('num_montanti_long_singola_parete', 0) > 0:
+                st.write(f"**Passo d'installazione:** {dati.get('passo_montanti_long', 0):.2f} m")
+                st.write(f"**Sviluppo Totale (Entrambe le pareti):** {dati.get('ml_tot_montanti_long_entrambe', 0):.2f} ml")
+            else:
+                st.info("💡 Interasse portali entro i 6m, nessun montante intermedio richiesto.")
+
+        st.markdown("---")
+        st.markdown("### 📐 5. Struttura Principale / Travatura (Dimensionamento)")
+        if dati.get('categoria_struttura') in ["Capriate", "Travi Reticolari"]:
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                st.markdown("#### 🌲 Variante in Legno")
+                st.success(dati.get('travi_legno', 'N.D.').replace('\n', '  \n'))
+            with col_t2:
+                st.markdown("#### ⚙️ Variante in Acciaio")
+                st.warning(dati.get('travi_acciaio', 'N.D.').replace('\n', '  \n'))
+        else:
+            col_t1, col_t2, col_t3 = st.columns(3)
+            with col_t1:
+                st.markdown("#### 🌲 Legno Lamellare")
+                st.success(dati.get('travi_legno', 'N.D.'))
+            with col_t2:
+                st.markdown("#### ⚙️ Acciaio")
+                st.warning(dati.get('travi_acciaio', 'N.D.'))
+            with col_t3:
+                st.markdown("#### 🏛️ C.a.p.")
+                st.error(dati.get('travi_cap', 'N.D.'))
+        
+        st.markdown("---")
+        st.markdown("### 🏛️ 6. Pilastri (Perimetrali e Intermedi)")
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+            st.markdown("#### 🌲 Legno Lamellare")
+            st.success(dati.get('pilastri_perimetrali_legno', 'N.D.'))
+        with col_p2:
+            st.markdown("#### ⚙️ Acciaio")
+            st.warning(dati.get('pilastri_perimetrali_acciaio', 'N.D.'))
+        with col_p3:
+            st.markdown("#### 🏛️ C.a.p.")
+            st.error(dati.get('pilastri_perimetrali_cap', 'N.D.'))
+        
+        st.markdown("---")
+        st.markdown("### 🔗 7. Stabilizzazione e Controventi")
+        col_cv1, col_cv2 = st.columns(2)
+        with col_cv1:
+            st.markdown("#### 🛡️ Controventi di Copertura")
+            st.info(f"Legno: {dati.get('controventi_copertura_legno')} | Acciaio: {dati.get('controventi_copertura_acciaio')}")
+        with col_cv2:
+            st.markdown("#### 🧱 Controventi di Parete")
+            st.warning(f"Legno: {dati.get('controventi_parete_legno')} | Acciaio: {dati.get('controventi_parete_acciaio')}")
+
+        st.markdown("---")
+        st.markdown("### 🔩 8. Dimensionamento Dettagliato Connessioni, Nodi e Giunti in Colmo")
+        col_n1, col_n2 = st.columns(2)
+        with col_n1:
+            st.markdown("#### 🔗 Connessione Pilastro / Trave")
+            st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
+            st.write(f"- **Nodi Perimetrali:** {dati.get('conn_trave_pilastro_perim_elementi', 'N.D.')}")
+            st.metric("Peso Acciaio Nodo Perimetrale", dati.get('conn_trave_pilastro_perim_kg', 'N.D.'))
+            st.write(f"- **Nodi Intermedi:** {dati.get('conn_trave_pilastro_interm_elementi', 'N.D.')}")
+            st.metric("Peso Acciaio Nodo Intermedio", dati.get('conn_trave_pilastro_interm_kg', 'N.D.'))
+        with col_n2:
+            st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
+            st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
+            st.write(f"- **Ancoraggi Perimetrali:** {dati.get('conn_pilastro_fondazione_perim_elementi', 'N.D.')}")
+            st.metric("Peso Acciaio Base Perimetrale", dati.get('conn_pilast_fondazione_perim_kg', 'N.D.') if 'conn_pilast_fondazione_perim_kg' in dati else dati.get('conn_pilastro_fondazione_perim_kg', 'N.D.'))
+            st.write(f"- **Ancoraggi Intermedi:** {dati.get('conn_pilastro_fondazione_interm_elementi', 'N.D.')}")
+            st.metric("Peso Acciaio Base Intermedia", dati.get('conn_pilastro_fondazione_interm_kg', 'N.D.'))
+        
+        if "giuntata" in dati.get('tipo_travatura', '').lower():
+            st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
+
+        st.markdown("### 🔥 9. Requisiti di Resistenza al Fuoco e Durabilità")
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
+        with col_f2:
+            st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
+        with col_f3:
+            st.metric("Classe di Servizio Legno", dati.get('classe_servizio', 'Classe 2').split(' (')[0])
+        st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
+        
+        st.markdown("---")
+        st.markdown("### 📝 10. Note Tecniche")
+        st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
+
+# --- NUOVO MODULO A PARTE PER SOLAI XLAM ---
+with tab_xlam:
+    st.header("Modulo Dimensionamento Solai in XLAM (NTC 2018)")
+    st.markdown("Il dimensionamento considera la gamma stratigrafica tipica per pannelli CLT da solaio a marchio **Stora Enso** (pannelli C a 3, 5 e 7 strati).")
     
-    st.markdown("---")
-    st.markdown("### 📝 10. Note Tecniche")
-    st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
+    col_x1, col_x2 = st.columns(2)
+    with col_x1:
+        luce_xlam_ui = st.number_input("Luce di calcolo del solaio (m)", min_value=1.0, value=5.0, step=0.1)
+    
+    st.markdown("#### Pesi Permanenti Portati (G2)")
+    if 'carichi_g2_xlam' not in st.session_state:
+        st.session_state['carichi_g2_xlam'] = pd.DataFrame([
+            {"Descrizione": "Massetto e pavimentazione", "Carico [kN/m²]": 1.5},
+            {"Descrizione": "Impianti e controsoffitto", "Carico [kN/m²]": 0.5}
+        ])
+    
+    df_g2 = st.data_editor(st.session_state['carichi_g2_xlam'], num_rows="dynamic", use_container_width=True, key="xlam_g2_editor")
+    
+    st.markdown("#### Sovraccarichi Variabili")
+    col_qx1, col_qx2 = st.columns(2)
+    with col_qx1:
+        q_k_xlam = st.number_input("Sovraccarico Accidentale - Qk (kN/m²)", min_value=0.0, value=2.0, step=0.5)
+    with col_qx2:
+        qs_k_xlam = st.number_input("Carico Neve (se piano di copertura) - Qs (kN/m²)", min_value=0.0, value=0.0, step=0.1)
+
+    st.markdown("#### Stati limite di esercizio (SLE) - Limiti di Freccia")
+    col_sl1, col_sl2, col_sl3 = st.columns(3)
+    with col_sl1:
+        limite_w_inst_ui = st.number_input("Valore limite w_inst (L / ...)", min_value=100, value=300, step=10)
+    with col_sl2:
+        limite_w_netfin_ui = st.number_input("Valore limite w_net,fin (L / ...)", min_value=100, value=300, step=10)
+    with col_sl3:
+        limite_w_fin_ui = st.number_input("Valore limite w_fin (L / ...)", min_value=100, value=250, step=10)
+
+    st.markdown("#### Resistenza al Fuoco")
+    classe_fuoco_xlam = st.selectbox("Requisito Antincendio (carbonizzazione all'intradosso)", ["R 0", "R 30", "R 60", "R 90"], key="xlam_fuoco")
+
+    if st.button("Dimensiona Solaio XLAM", type="primary"):
+        g2_totale = df_g2["Carico [kN/m²]"].sum()
+        
+        # Parametri legno per XLAM (generalmente classe C24)
+        E_mean = 11000.0  # N/mm2
+        f_mk = 24.0       # N/mm2
+        gamma_m = 1.25
+        k_mod = 0.8
+        f_md = f_mk * k_mod / gamma_m
+        k_def = 0.8 # Classe di servizio 2
+        
+        # Carbonizzazione teorica (beta_0 = 0.65 mm/min per pannelli massicci)
+        d_ef = 0
+        if classe_fuoco_xlam == "R 30": d_ef = 30 * 0.65 + 7.0
+        elif classe_fuoco_xlam == "R 60": d_ef = 60 * 0.65 + 7.0
+        elif classe_fuoco_xlam == "R 90": d_ef = 90 * 0.65 + 7.0
+
+        pannello_idoneo = None
+        
+        for pannello in pannelli_xlam_db:
+            peso_proprio_g1 = (pannello["spessore"] / 1000.0) * 5.0  # kN/m2
+            
+            # --- VERIFICA SLU ---
+            q_slu = 1.3 * (peso_proprio_g1 + g2_totale) + 1.5 * q_k_xlam + 1.5 * 0.5 * qs_k_xlam
+            M_ed = (q_slu * luce_xlam_ui**2) / 8.0 * 1000000.0  # Momento per 1 metro di fascia (N*mm)
+            
+            I_eff, W_eff = calcola_proprieta_efficaci_xlam(pannello["strati"], pannello["orientamento"])
+            I_eff *= 1000.0  # Riporto a fascia di 1 metro
+            W_eff *= 1000.0
+            
+            sigma_m = M_ed / W_eff if W_eff > 0 else 999.0
+            check_slu = sigma_m <= f_md
+            
+            # --- VERIFICA SLE ---
+            # Carichi per fasce (kN/m)
+            q_inst_G = peso_proprio_g1 + g2_totale
+            q_inst_Q = q_k_xlam + qs_k_xlam
+            
+            # Formule di freccia elastica trave appoggiata-appoggiata
+            w_inst_G = (5.0 / 384.0) * (q_inst_G / 1000.0) * (luce_xlam_ui * 1000.0)**4 / (E_mean * I_eff)
+            w_inst_Q = (5.0 / 384.0) * (q_inst_Q / 1000.0) * (luce_xlam_ui * 1000.0)**4 / (E_mean * I_eff)
+            
+            w_inst = w_inst_G + w_inst_Q
+            w_fin = w_inst_G * (1.0 + k_def) + w_inst_Q * (1.0 + 0.3 * k_def)  # Assumendo psi_2 = 0.3
+            
+            L_mm = luce_xlam_ui * 1000.0
+            check_sle_inst = w_inst <= (L_mm / limite_w_inst_ui)
+            check_sle_fin = w_fin <= (L_mm / limite_w_fin_ui)
+            check_sle_netfin = w_fin <= (L_mm / limite_w_netfin_ui)
+            
+            # --- VERIFICA AL FUOCO ---
+            check_fuoco = True
+            sigma_m_fi = 0.0
+            f_md_fi = 1.15 * f_mk / 1.0
+            if d_ef > 0:
+                I_eff_fi, W_eff_fi = calcola_proprieta_efficaci_xlam(pannello["strati"], pannello["orientamento"], d_ef)
+                I_eff_fi *= 1000.0
+                W_eff_fi *= 1000.0
+                
+                q_fi = 1.0 * (peso_proprio_g1 + g2_totale) + 1.0 * 0.3 * q_k_xlam
+                M_ed_fi = (q_fi * luce_xlam_ui**2) / 8.0 * 1000000.0
+                
+                sigma_m_fi = M_ed_fi / W_eff_fi if W_eff_fi > 0 else 999.0
+                check_fuoco = sigma_m_fi <= f_md_fi
+
+            if check_slu and check_sle_inst and check_sle_fin and check_sle_netfin and check_fuoco:
+                pannello_idoneo = pannello
+                break
+                
+        if pannello_idoneo:
+            st.success(f"✅ **Solaio XLAM Ottimizzato Trovato:** {pannello_idoneo['nome']} (Spessore {pannello_idoneo['spessore']} mm)")
+            st.markdown(f"**Composizione strati (Top -> Bottom):** {pannello_idoneo['strati']} mm")
+            
+            c_res1, c_res2, c_res3 = st.columns(3)
+            with c_res1:
+                st.markdown("#### Verifica a Flessione (SLU)")
+                st.write(f"$\sigma_{{m,d}}$ = **{sigma_m:.2f} MPa**")
+                st.write(f"$f_{{m,d}}$ limite = **{f_md:.2f} MPa**")
+            with c_res2:
+                st.markdown("#### Verifica Frecce (SLE)")
+                st.write(f"$w_{{inst}}$ = **{w_inst:.2f} mm** (Lim. {(L_mm / limite_w_inst_ui):.1f} mm)")
+                st.write(f"$w_{{fin}}$ = **{w_fin:.2f} mm** (Lim. {(L_mm / limite_w_fin_ui):.1f} mm)")
+            with c_res3:
+                st.markdown("#### Verifica Antincendio")
+                if classe_fuoco_xlam == "R 0":
+                    st.write("Nessun requisito richiesto.")
+                else:
+                    st.write(f"Strato carbonizzato rimosso: **{d_ef:.1f} mm**")
+                    st.write(f"$\sigma_{{m,fi,d}}$ = **{sigma_m_fi:.2f} MPa** (Lim. {f_md_fi:.2f} MPa)")
+        else:
+            st.error("Nessun pannello XLAM dal database standard (fino a 280mm) risulta verificato. Prova a diminuire la luce, ridurre i carichi, o prevedere dei supporti intermedi per il solaio.")
