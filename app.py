@@ -235,7 +235,15 @@ def esegui_calcolo_deterministico(dati_geo):
     elif W_req_arc < 85: sez_arc = "Tubolare 150x75x4 / IPE 140"
     else: sez_arc = "IPE 180"
 
-    W_req_arc_legno = (M_ed_arc * 100) / 14.5
+    # --- INFLUENZA DELLA CLASSE DI SERVIZIO SUL LEGNO ---
+    classe_servizio = dati_geo.get('classe_servizio', 'Classe 2 (Umidità < 85%)')
+    # Se in Classe 3, k_mod diminuisce (circa da 0.9 a 0.7 per carichi istantanei neve/vento) 
+    # di conseguenza f_md si riduce. Anche il modulo elastico E subisce penalità sul lungo periodo (viscosità).
+    f_md_arc = 11.27 if "Classe 3" in classe_servizio else 14.5
+    f_md_trave = 11270.0 if "Classe 3" in classe_servizio else 14500.0
+    E_legno_val = 950 if "Classe 3" in classe_servizio else 1150
+
+    W_req_arc_legno = (M_ed_arc * 100) / f_md_arc
     h_arc_legno = max(16, int((6 * W_req_arc_legno / 10.0) ** 0.5))
     h_arc_legno = ((h_arc_legno + 3) // 4) * 4
     sez_arc_legno = f"GL24h 10x{h_arc_legno} cm"
@@ -322,7 +330,7 @@ def esegui_calcolo_deterministico(dati_geo):
 
     else:
         b_legno_cm = 20 + (fuoco_add * 2 if "R 0" not in classe_fuoco else 0)
-        w_req_cm3 = (m_ed * 1e6) / 14500.0  
+        w_req_cm3 = (m_ed * 1e6) / f_md_trave  
         h_legno_cm = int((6 * w_req_cm3 / b_legno_cm) ** 0.5)
         h_legno_cm = max(44, ((h_legno_cm + 3) // 4) * 4) 
         if "R 0" not in classe_fuoco:
@@ -337,13 +345,13 @@ def esegui_calcolo_deterministico(dati_geo):
         h_cap_cm = max(80, ((int(h_legno_cm * 1.2) + 4) // 5) * 5)
         profilo_cap = f"Trave a T rovescia precompressa altezza {h_cap_cm} cm"
 
-        travi_legno_out = f"Base {b_legno_cm} cm x Altezza {h_legno_cm} cm (GL24h - Incendio {classe_fuoco})"
+        travi_legno_out = f"Base {b_legno_cm} cm x Altezza {h_legno_cm} cm (GL24h - {classe_fuoco})"
         travi_acciaio_out = f"Profilo {profilo_acciaio} S355JR"
         travi_cap_out = profilo_cap
 
     q_w = pressione_vento * interasse
     M_base_vento = (q_w * h_gronda**2) / 2
-    E_legno = 1150 
+    E_legno = E_legno_val 
     limite_spostamento_cm = (h_gronda * 100) / 150 
     
     b_pil_perim_cm = 20 + (fuoco_add * 2 if "R 0" not in classe_fuoco else 0)
@@ -456,9 +464,10 @@ def esegui_calcolo_deterministico(dati_geo):
         "conn_pilastro_fondazione_interm_kg": f"{peso_anc_interm_kg} kg",
         "dettaglio_giunto_colmo": "Piastra di colmo bullonata",
         "classe_resistenza_fuoco": classe_fuoco,
+        "classe_servizio": classe_servizio,
         "mq_intumescente": f"{mq_acciaio} mq",
         "dettaglio_verniciatura": f"Primer + Intumescente {classe_fuoco}" if "R 0" not in classe_fuoco else "Nessun trattamento antincendio richiesto (R0)",
-        "note_tecniche": f"Calcolo esatto NTC 2018 con verifica antincendio ({classe_fuoco}). L={luce_totale}m, H_truss={H_truss:.2f}m."
+        "note_tecniche": f"Calcolo esatto NTC 2018 con verifica antincendio ({classe_fuoco}) e {classe_servizio}. L={luce_totale}m, H_truss={H_truss:.2f}m."
     }
     return risultati_deterministici
 
@@ -649,8 +658,9 @@ def genera_word_report(dati, distinta, logistica):
     if "giuntata" in dati.get('tipo_travatura', '').lower():
         doc.add_paragraph(f"Dettaglio Giunto in Colmo: {dati.get('dettaglio_giunto_colmo')}")
 
-    doc.add_heading('7. Protezione Antincendio e Note', level=1)
+    doc.add_heading('7. Protezione Antincendio, Durabilità e Note', level=1)
     doc.add_paragraph(f"Classe Resistenza al Fuoco: {dati.get('classe_resistenza_fuoco')} | Superficie Acciaio: {dati.get('mq_intumescente')}")
+    doc.add_paragraph(f"Classe di Servizio (Strutture in Legno): {dati.get('classe_servizio', 'Classe 2')}")
     doc.add_paragraph(f"Ciclo Verniciatura: {dati.get('dettaglio_verniciatura')}")
     doc.add_paragraph(dati.get('note_tecniche', 'N.D.'))
     
@@ -920,8 +930,12 @@ with col_p2:
     elif tipo_isolante_parete == "Lana di Roccia": spessore_pannello_parete = st.selectbox("Spessore Pannello Parete (mm)", [80, 100, 120, 150], key="spessore_parete_lana")
     else: spessore_pannello_parete = 0
 
-st.markdown("### 🔥 Requisiti Antincendio (NTC 2018)")
-classe_fuoco_ui = st.selectbox("Classe di Resistenza al Fuoco", ["R 0 (Nessun requisito)", "R 60", "R 90", "R 120"], index=1, key="classe_fuoco_ui")
+st.markdown("### 🔥 Requisiti Antincendio e Durabilità (NTC 2018)")
+col_f1, col_f2 = st.columns(2)
+with col_f1:
+    classe_fuoco_ui = st.selectbox("Classe di Resistenza al Fuoco", ["R 0 (Nessun requisito)", "R 60", "R 90", "R 120"], index=1, key="classe_fuoco_ui")
+with col_f2:
+    classe_servizio_ui = st.selectbox("Classe di Servizio (Legno EN 1995-1-1)", ["Classe 1 (Interno asciutto)", "Classe 2 (Umidità < 85%)", "Classe 3 (Esterno esposto)"], index=1, key="classe_servizio_ui")
 
 if st.button("Esegui Dimensionamento, Logistica e Genera Modello 3D", type="primary"):
     if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or altezza_colmo_ui <= 0:
@@ -944,7 +958,8 @@ if st.button("Esegui Dimensionamento, Logistica e Genera Modello 3D", type="prim
             'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
             'impianto_fv_desc': impianto_fv_desc, 'carico_aggiuntivo': carico_aggiuntivo,
             'latitudine': lat_estratta, 'longitudine': lon_estratta, 'comune': comune_finale,
-            'classe_fuoco': classe_fuoco_ui
+            'classe_fuoco': classe_fuoco_ui,
+            'classe_servizio': classe_servizio_ui
         }
 
         if modalita_deterministica:
@@ -1148,12 +1163,14 @@ if 'dati_ultimi' in st.session_state:
     if "giuntata" in dati.get('tipo_travatura', '').lower():
         st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
 
-    st.markdown("### 🔥 9. Requisiti di Resistenza al Fuoco e Vernice Intumescente")
-    col_f1, col_f2 = st.columns(2)
+    st.markdown("### 🔥 9. Requisiti di Resistenza al Fuoco e Durabilità")
+    col_f1, col_f2, col_f3 = st.columns(3)
     with col_f1:
         st.metric("Classe di Resistenza Richiesta", dati.get('classe_resistenza_fuoco', 'R 60'))
     with col_f2:
         st.metric("Superficie Acciaio da Trattare", dati.get('mq_intumescente', 'Non specificato'))
+    with col_f3:
+        st.metric("Classe di Servizio Legno", dati.get('classe_servizio', 'Classe 2').split(' (')[0])
     st.info(f"**Specifiche Ciclo Antincendio:** {dati.get('dettaglio_verniciatura', 'N.D.')}")
     
     st.markdown("---")
