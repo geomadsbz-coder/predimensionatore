@@ -1153,7 +1153,8 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
-tab_principale, tab_xlam, tab_carport = st.tabs(["🏗️ Struttura Principale Capannone", "🪵 Dimensionamento Solaio XLAM", "🚗 Dimensionamento Carport"])
+# --- AGGIUNTA SCHEDA TAB TRAVI ---
+tab_principale, tab_xlam, tab_travi, tab_carport = st.tabs(["🏗️ Struttura Principale Capannone", "🪵 Dimensionamento Solaio XLAM", "📏 Dimensionamento Travi", "🚗 Dimensionamento Carport"])
 
 with tab_principale:
     st.subheader("Analisi Capitolato / Appunti di Progetto e File (CAD o PDF)")
@@ -1643,6 +1644,9 @@ with tab_xlam:
                 break
                 
         if pannello_idoneo:
+            # --- SALVATAGGIO REAZIONE D'APPOGGIO IN SESSION STATE ---
+            reazione_appoggio_xlam = (q_slu * luce_xlam_ui) / 2.0
+            
             st.success(f"✅ **Solaio XLAM Ottimizzato Trovato:** {pannello_idoneo['nome']} (Spessore {pannello_idoneo['spessore']} mm)")
             st.markdown(f"**Composizione strati (Top -> Bottom):** {pannello_idoneo['strati']} mm")
             st.write(f"Peso proprio strutturale (G1) considerato nel calcolo: **{peso_proprio_g1:.2f} kN/m²**")
@@ -1694,7 +1698,8 @@ with tab_xlam:
                 'lim_fin_mm': L_mm / limite_w_fin_ui,
                 'd_ef': d_ef,
                 'sigma_m_fi': sigma_m_fi if classe_fuoco_xlam != "R 0" else 0,
-                'f_md_fi': f_md_fi if classe_fuoco_xlam != "R 0" else 0
+                'f_md_fi': f_md_fi if classe_fuoco_xlam != "R 0" else 0,
+                'reazione_appoggio': reazione_appoggio_xlam
             }
         else:
             st.error("Nessun pannello XLAM dal database standard (fino a 320mm) risulta verificato. Prova a diminuire la luce, ridurre i carichi, o prevedere dei supporti intermedi per il solaio.")
@@ -1711,6 +1716,112 @@ with tab_xlam:
             type="primary",
             use_container_width=True
         )
+
+# --- NUOVO MODULO TAB TRAVI ---
+with tab_travi:
+    st.header("Modulo Dimensionamento Travi (Acciaio e Legno Lamellare)")
+    st.markdown("Questo modulo calcola e suggerisce la sezione della trave, permettendo di incrociare i carichi provenienti dal modulo XLAM o da travi secondarie precedentemente dimensionate.")
+    
+    st.markdown("### 🧱 1. Materiale e Proprietà")
+    col_mat1, col_mat2 = st.columns(2)
+    with col_mat1:
+        mat_trave = st.radio("Materiale della Trave", ["Acciaio", "Legno Lamellare"])
+    with col_mat2:
+        if mat_trave == "Acciaio":
+            grado_acciaio = st.radio("Grado Acciaio", ["S275", "S355"])
+        else:
+            classe_legno = st.selectbox("Classe Legno Lamellare", ["GL24h", "GL28h", "GL30h", "GL32h"])
+            essenza_legno = st.radio("Essenza", ["Abete", "Larice"])
+            
+    col_geom1, col_geom2 = st.columns(2)
+    with col_geom1:
+        luce_trave = st.number_input("Luce di calcolo della trave (m)", min_value=1.0, value=5.0, step=0.1, key="luce_tr")
+    
+    st.markdown("---")
+    st.markdown("### 📥 2. Carichi Uniformemente Distribuiti (q)")
+    usa_xlam = st.checkbox("Importa reazione di appoggio dal modulo Solai XLAM", value=False)
+    q_xlam_lineare = 0.0
+    if usa_xlam:
+        if 'xlam_ultimi' in st.session_state:
+            q_xlam_lineare = st.session_state['xlam_ultimi'].get('reazione_appoggio', 0.0)
+            st.success(f"✅ Reazione di appoggio (SLU) importata dal solaio XLAM: **{q_xlam_lineare:.2f} kN/m**")
+        else:
+            st.warning("⚠️ Nessun solaio XLAM calcolato precedentemente. (Esegui prima il calcolo nella scheda XLAM).")
+            
+    q_distr_man = st.number_input("Aggiungi carico distribuito manuale q (kN/m)", min_value=0.0, value=0.0, step=0.5, key="q_distr_man")
+    q_tot_distr = q_xlam_lineare + q_distr_man
+    
+    st.markdown("---")
+    st.markdown("### 🎯 3. Carichi Concentrati (F)")
+    usa_storico = st.checkbox("Importa reazione da una Trave precedentemente calcolata (es. orditura secondaria)", value=False)
+    f_conc_storico = 0.0
+    if usa_storico:
+        if 'travi_storico' in st.session_state and len(st.session_state['travi_storico']) > 0:
+            trave_sel = st.selectbox("Seleziona la trave da far scaricare su questa", [t['nome'] for t in st.session_state['travi_storico']])
+            for t in st.session_state['travi_storico']:
+                if t['nome'] == trave_sel:
+                    f_conc_storico = t['reazione_max']
+                    st.success(f"✅ Reazione importata (V_ed max della {trave_sel}): **{f_conc_storico:.2f} kN**")
+        else:
+            st.warning("⚠️ Nessuna trave calcolata precedentemente nello storico.")
+            
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        f_conc_man = st.number_input("Aggiungi carico concentrato manuale F (kN)", min_value=0.0, value=0.0, step=1.0, key="f_conc_man")
+        f_tot_conc = f_conc_storico + f_conc_man
+    with col_c2:
+        pos_f_conc = st.number_input("Distanza di applicazione del carico F dall'appoggio A (m)", min_value=0.0, max_value=luce_trave, value=luce_trave/2, step=0.1)
+
+    if st.button("Dimensiona Trave e Salva in Storico", type="primary"):
+        a = pos_f_conc
+        b = luce_trave - pos_f_conc
+        
+        M_distr = (q_tot_distr * luce_trave**2) / 8.0
+        M_conc = (f_tot_conc * a * b) / luce_trave if f_tot_conc > 0 else 0.0
+        
+        R_A = (q_tot_distr * luce_trave / 2.0) + (f_tot_conc * b / luce_trave)
+        R_B = (q_tot_distr * luce_trave / 2.0) + (f_tot_conc * a / luce_trave)
+        R_max = max(R_A, R_B)
+        
+        M_ed = M_distr + M_conc
+        
+        st.write("---")
+        st.markdown("### 📊 Risultati Sollecitazioni")
+        st.write(f"**Momento Flettente Massimo (M_ed):** {M_ed:.2f} kNm")
+        st.write(f"**Reazione Massima agli Appoggi (V_ed):** {R_max:.2f} kN")
+        
+        st.markdown("### 🛠️ Profilo Suggerito (NTC 2018)")
+        if mat_trave == "Acciaio":
+            f_y = 27.5 if grado_acciaio == "S275" else 35.5 
+            w_el_req = (M_ed * 100) / f_y
+            if w_el_req < 150: sez_out = "IPE 200 / HEA 140"
+            elif w_el_req < 300: sez_out = "IPE 240 / HEA 180"
+            elif w_el_req < 600: sez_out = "IPE 330 / HEA 240"
+            elif w_el_req < 1200: sez_out = "IPE 450 / HEA 300"
+            else: sez_out = "IPE 600 / HEB 400"
+            st.success(f"**Profilo in Acciaio Ideale:** {sez_out} ({grado_acciaio})")
+            
+        else:
+            f_mk = float(classe_legno[2:4])
+            k_mod = 0.8
+            gamma_m = 1.25
+            f_md = (f_mk * k_mod) / gamma_m
+            w_req_legno = (M_ed * 100) / (f_md * 10) 
+            b_opt = 20
+            h_req = math.sqrt((6 * w_req_legno) / b_opt)
+            h_opt = max(24, int((h_req + 3) // 4) * 4)
+            st.success(f"**Sezione in Legno Lamellare:** Base {b_opt} cm x Altezza {h_opt} cm ({classe_legno} - {essenza_legno})")
+
+        if 'travi_storico' not in st.session_state:
+            st.session_state['travi_storico'] = []
+        
+        nome_nuova_trave = f"Trave L={luce_trave}m ({mat_trave}) #{len(st.session_state['travi_storico'])+1}"
+        st.session_state['travi_storico'].append({
+            'nome': nome_nuova_trave,
+            'reazione_max': R_max,
+            'M_ed': M_ed
+        })
+        st.info(f"✅ Dati della **{nome_nuova_trave}** salvati nello storico! Ora potrai selezionarla per farla scaricare come carico concentrato sulle travi principali successive.")
 
 with tab_carport:
     st.header("Modulo Dimensionamento Strutturale Carport (NTC 2018)")
