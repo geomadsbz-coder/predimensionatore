@@ -822,7 +822,6 @@ def genera_modello_3d(dati):
     )
     return fig
 
-# --- FUNZIONI DI CALCOLO XLAM E PROPRIETA' EFFICACI ---
 def calcola_proprieta_efficaci_xlam(strati, orientamento, def_fuoco=0):
     strati_eff = list(strati)
     rimosso = def_fuoco
@@ -895,6 +894,181 @@ pannelli_xlam_db = [
     {"nome": "CLT 280 C7s", "spessore": 280, "strati": [40, 40, 40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 1, 0, 1]},
     {"nome": "CLT 320 C8s", "spessore": 320, "strati": [40, 40, 40, 40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 0, 1, 0, 1]}
 ]
+
+# --- FUNZIONI CARPORT ---
+def esegui_calcolo_carport(dati):
+    w = dati['larghezza']
+    pt = dati['passo_telai']
+    q_tot = dati['q_tot']
+    tipo = dati['tipo']
+    forma = dati['forma']
+    
+    # Arcarecci
+    passo_arc_max = 1.2 if "Acciaio" in tipo else 1.5
+    n_arc = math.ceil(w / passo_arc_max)
+    passo_arc = w / n_arc if n_arc > 0 else 1.0
+
+    M_arc = (q_tot * passo_arc * pt**2) / 8.0
+    if "Acciaio" in tipo.split('-')[1]:
+        if M_arc < 5: sez_arc = "Profilo a Z pressopiegato 120x2.0 mm"
+        elif M_arc < 10: sez_arc = "Profilo a Z pressopiegato 150x2.5 mm"
+        else: sez_arc = "Profilo a Z pressopiegato 200x3.0 mm"
+    else: 
+        w_req = (M_arc * 100) / 14.5
+        h_req = math.sqrt((6*w_req)/10.0)
+        h_arc = max(16, math.ceil(h_req/4)*4)
+        sez_arc = f"Legno Lamellare GL24h 10x{int(h_arc)} cm"
+
+    # Trave di falda (Mensola o Semimensola)
+    L_cant = w / 2.0 if "Y-Doppelcarport" in forma else w
+    M_trave = (q_tot * pt * L_cant**2) / 2.0
+
+    if "Acciaio" in tipo.split('-')[1]:
+        w_req_tr = (M_trave * 100) / 27.5
+        if w_req_tr < 200: sez_trave = "IPE 240 / HEA 200"
+        elif w_req_tr < 500: sez_trave = "IPE 330 / HEA 260"
+        elif w_req_tr < 1000: sez_trave = "IPE 450 / HEA 340"
+        else: sez_trave = "IPE 600 / HEB 400"
+    else:
+        w_req_tr = (M_trave * 100) / 14.5
+        b_tr = 20
+        h_req_tr = math.sqrt((6*w_req_tr)/b_tr)
+        h_tr = max(40, math.ceil(h_req_tr/4)*4)
+        sez_trave = f"BSH GL24h {b_tr}x{int(h_tr)} cm (consigliata a sezione variabile)"
+
+    # Colonna in Acciaio (tutti i modelli Carport SC e SHC hanno colonna acciaio)
+    N_col = q_tot * pt * w
+    if N_col < 100: sez_col = "HEB 200"
+    elif N_col < 200: sez_col = "HEB 240"
+    else: sez_col = "HEB 300"
+
+    # Controventi
+    cv_falda = "Tiranti in acciaio incrociati Ø 16 mm (campate di estremità)"
+    cv_vert = "Incastro rigido in fondazione (nessun controvento verticale previsto per viabilità)" if "Y" in forma else "Croci di Sant'Andrea in tubolare 80x80x4 mm o L 80x8 (sulla linea colonne)"
+
+    return {
+        "passo_arc": round(passo_arc, 2),
+        "sez_arc": sez_arc,
+        "sez_trave": sez_trave,
+        "sez_col": sez_col,
+        "cv_falda": cv_falda,
+        "cv_vert": cv_vert,
+        "M_trave": round(M_trave, 1)
+    }
+
+def genera_modello_3d_carport(dati):
+    fig = go.Figure()
+    w = dati['larghezza']
+    pt = dati['passo_telai']
+    nc = dati['num_campate']
+    h_trauf = dati['h_trauf']
+    h_first = dati['h_first']
+    forma = dati['forma']
+    
+    y_telai = [i * pt for i in range(nc + 1)]
+    lunghezza_totale = nc * pt
+    
+    for y in y_telai:
+        if "Y-Doppelcarport" in forma:
+            x_col = w / 2.0
+            z_col = h_trauf
+            # Colonna
+            fig.add_trace(go.Scatter3d(x=[x_col, x_col], y=[y, y], z=[0, z_col], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna'))
+            # Travi
+            fig.add_trace(go.Scatter3d(x=[x_col, 0], y=[y, y], z=[z_col, h_first], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Mensola'))
+            fig.add_trace(go.Scatter3d(x=[x_col, w], y=[y, y], z=[z_col, h_first], mode='lines', line=dict(color='firebrick', width=6), showlegend=False))
+        elif "fallend" in forma:
+            x_col = 0.0
+            z_col = h_first
+            # Colonna
+            fig.add_trace(go.Scatter3d(x=[x_col, x_col], y=[y, y], z=[0, z_col], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna'))
+            # Trave
+            fig.add_trace(go.Scatter3d(x=[x_col, w], y=[y, y], z=[z_col, h_trauf], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Mensola'))
+        else: # steigend
+            x_col = 0.0
+            z_col = h_trauf
+            # Colonna
+            fig.add_trace(go.Scatter3d(x=[x_col, x_col], y=[y, y], z=[0, z_col], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna'))
+            # Trave
+            fig.add_trace(go.Scatter3d(x=[x_col, w], y=[y, y], z=[z_col, h_first], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Mensola'))
+
+    # Arcarecci
+    passo_arc = dati['passo_arc']
+    n_arc = max(1, int(w / passo_arc))
+    for i in range(n_arc + 1):
+        x_arc = i * passo_arc
+        if "Y-Doppelcarport" in forma:
+            z_arc = h_first - ((h_first - h_trauf) * (x_arc / (w/2.0))) if x_arc <= w/2.0 else h_trauf + ((h_first - h_trauf) * ((x_arc - w/2.0) / (w/2.0)))
+        elif "fallend" in forma:
+            z_arc = h_first - ((h_first - h_trauf) * (x_arc / w))
+        else: # steigend
+            z_arc = h_trauf + ((h_first - h_trauf) * (x_arc / w))
+            
+        fig.add_trace(go.Scatter3d(x=[x_arc, x_arc], y=[0, lunghezza_totale], z=[z_arc, z_arc], mode='lines', line=dict(color='gray', width=3, dash='dot'), showlegend=(i==0), name='Arcarecci'))
+
+    # Controventi
+    for idx in [0, nc - 1]:
+        y1, y2 = y_telai[idx], y_telai[idx + 1]
+        
+        # Diagonali di falda
+        for i in range(n_arc):
+            xa, xb = i * passo_arc, (i+1) * passo_arc
+            if "Y-Doppelcarport" in forma:
+                za = h_first - ((h_first - h_trauf) * (xa / (w/2.0))) if xa <= w/2.0 else h_trauf + ((h_first - h_trauf) * ((xa - w/2.0) / (w/2.0)))
+                zb = h_first - ((h_first - h_trauf) * (xb / (w/2.0))) if xb <= w/2.0 else h_trauf + ((h_first - h_trauf) * ((xb - w/2.0) / (w/2.0)))
+            elif "fallend" in forma:
+                za = h_first - ((h_first - h_trauf) * (xa / w))
+                zb = h_first - ((h_first - h_trauf) * (xb / w))
+            else:
+                za = h_trauf + ((h_first - h_trauf) * (xa / w))
+                zb = h_trauf + ((h_first - h_trauf) * (xb / w))
+            
+            fig.add_trace(go.Scatter3d(x=[xa, xb, None, xa, xb], y=[y1, y2, None, y2, y1], z=[za, zb, None, za, zb], mode='lines', line=dict(color='forestgreen', width=3), showlegend=(idx==0 and i==0), name='Controventi Falda'))
+        
+        # Controventi verticali
+        if not "Y" in forma:
+            z_col_top = h_first if "fallend" in forma else h_trauf
+            fig.add_trace(go.Scatter3d(x=[0, 0, None, 0, 0], y=[y1, y2, None, y2, y1], z=[0, z_col_top, None, z_col_top, 0], mode='lines', line=dict(color='darkorange', width=4), showlegend=(idx==0), name='Controventi Verticali'))
+
+    fig.update_layout(
+        title=f"Modello 3D Carport ({nc} Campate - {forma})",
+        scene=dict(xaxis_title=f'X ({w}m)', yaxis_title=f'Y ({lunghezza_totale}m)', zaxis_title=f'Z ({h_first}m)', aspectmode='data'),
+        margin=dict(l=0, r=0, b=0, t=40), height=500
+    )
+    return fig
+
+def genera_word_carport(dati):
+    doc = Document()
+    doc.add_heading('Relazione Tecnica di Calcolo - Modulo Carport', 0)
+    
+    doc.add_heading('1. Tipologia e Geometria', level=1)
+    doc.add_paragraph(f"Modello Selezionato: {dati['modello']}")
+    doc.add_paragraph(f"Tipologia Strutturale: {dati['tipo']} ({dati['forma']})")
+    doc.add_paragraph(f"Larghezza Copertura: {dati['larghezza']:.2f} m")
+    doc.add_paragraph(f"Passo Telai: {dati['passo_telai']:.2f} m | Numero Campate: {dati['num_campate']}")
+    doc.add_paragraph(f"Sviluppo Totale (Lunghezza): {dati['lunghezza_totale']:.2f} m")
+    doc.add_paragraph(f"Altezza minima (Trave/Gronda): {dati['h_trauf']:.2f} m | Altezza massima (Colmo/Falda): {dati['h_first']:.2f} m")
+
+    doc.add_heading('2. Analisi dei Carichi (NTC 2018)', level=1)
+    doc.add_paragraph(f"Carico Strutturale (G1): {dati['g1']:.2f} kN/m²")
+    doc.add_paragraph(f"Carico Permanenti (G2): {dati['g2']:.2f} kN/m²")
+    doc.add_paragraph(f"Carico Neve (qs_k): {dati['neve']:.2f} kN/m²")
+    doc.add_paragraph(f"Carico Vento (qp): {dati['vento']:.2f} kN/m²")
+    doc.add_paragraph(f"Carico Totale Equivalente di Calcolo (SLU): {dati['kg_mq']:.1f} kg/m²")
+
+    doc.add_heading('3. Dimensionamento Elementi Strutturali', level=1)
+    doc.add_paragraph(f"Trave Principale di Falda: {dati['sez_trave']}")
+    doc.add_paragraph(f"Colonna Portante: {dati['sez_col']}")
+    doc.add_paragraph(f"Arcarecci di Copertura: {dati['sez_arc']} (Passo Max: {dati['passo_arc']:.2f} m)")
+    
+    doc.add_heading('4. Sistemi di Stabilizzazione', level=1)
+    doc.add_paragraph(f"Controventi di Falda: {dati['cv_falda']}")
+    doc.add_paragraph(f"Controventi Verticali: {dati['cv_vert']}")
+
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+    return file_stream
 
 
 st.set_page_config(page_title="Predimensionamento Strutturale NTC 2018", layout="wide")
@@ -1408,14 +1582,13 @@ with tab_xlam:
         else:
             st.error("Nessun pannello XLAM dal database standard (fino a 320mm) risulta verificato. Prova a diminuire la luce, ridurre i carichi, o prevedere dei supporti intermedi per il solaio.")
 
-# --- NUOVO MODULO A PARTE PER I CARPORT ---
 with tab_carport:
-    st.header("Modulo Dimensionamento Carport")
-    st.markdown("Il dimensionamento calcola il carico totale per area ($kg/m^2$) considerando pesi propri, eventuale sovraccarico, neve e vento. La logica pre-seleziona i dati geometrici standard in base al modello scelto dal catalogo[cite: 24, 25, 26, 29, 30, 33].")
+    st.header("Modulo Dimensionamento Strutturale Carport")
+    st.markdown("Il modulo dimensiona le sezioni, gli arcarecci e i sistemi di controventamento per i modelli di Carport caricati[cite: 24, 25, 26, 29, 30, 33].")
     
     # Database Carport
     carport_db = {
-        "SC-L3 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Mehrgelenk-Rahmen (Satteldach)", "b_std": 0.0, "h_trauf": 0.0, "h_first": 0.0, "dn": 0, "file": "530K - Carport System SC-L3.pdf", "is_shc": False},
+        "SC-L3 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Y-Doppelcarport (Satteldach)", "b_std": 0.0, "h_trauf": 3.00, "h_first": 4.50, "dn": 10, "file": "530K - Carport System SC-L3.pdf", "is_shc": False},
         "SC-P1 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Pultdach (steigend)", "b_std": 5.50, "h_trauf": 2.40, "h_first": 3.37, "dn": 10, "file": "110 - Carport System SC-P1.pdf", "is_shc": False},
         "SHC-P1 (Stahl-BSH)": {"tipo": "Acciaio-BSH", "forma": "Pultdach (steigend)", "b_std": 5.70, "h_trauf": 2.45, "h_first": 3.25, "dn": 8, "file": "110 - Carport System SHC-P1.pdf", "is_shc": True},
         "SC-P2 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Pultdach (fallend)", "b_std": 5.50, "h_trauf": 3.53, "h_first": 4.50, "dn": 10, "file": "120 - Carport System SC-P2.pdf", "is_shc": False},
@@ -1426,18 +1599,15 @@ with tab_carport:
     modello_carport_ui = st.selectbox("Seleziona Modello Carport", list(carport_db.keys()), key="mod_carport")
     mod_data = carport_db[modello_carport_ui]
     
-    st.info(f"Modello selezionato dal file **{mod_data['file']}**.\n- Tipologia Telaio: **{mod_data['tipo']}**\n- Forma: **{mod_data['forma']}**")
+    st.info(f"Tipologia Selezionata: **{mod_data['tipo']}** | Forma Base: **{mod_data['forma']}**")
 
     col_g_c1, col_g_c2, col_g_c3 = st.columns(3)
     with col_g_c1:
-        larghezza_carport = st.number_input("Larghezza Standard (m)", value=mod_data["b_std"] if mod_data["b_std"] > 0 else 10.0, step=0.1)
+        larghezza_carport = st.number_input("Larghezza Trasversale (m)", value=mod_data["b_std"] if mod_data["b_std"] > 0 else 10.0, step=0.1)
     with col_g_c2:
         passo_telai_carport = st.number_input("Passo Telai (m)", value=5.0, step=0.1) 
     with col_g_c3:
-        if mod_data["is_shc"]:
-            sichtqualitat_bsh = st.checkbox("Sichtqualität BSH (+3%)", value=False)
-        else:
-            sichtqualitat_bsh = False
+        num_campate_carport = st.number_input("Numero Campate (Lunghezza)", value=5, min_value=1, step=1)
     
     st.markdown("#### Logica Carichi e Azioni Esterne (Vento / Neve / Permanenti)")
     col_cc1, col_cc2, col_cc3, col_cc4 = st.columns(4)
@@ -1450,34 +1620,51 @@ with tab_carport:
     with col_cc4:
         vento_carport = st.number_input("Carico Vento qp (kN/m²)", min_value=0.0, value=0.60, step=0.10)
 
-    if st.button("Calcola Carico Totale e Cerca Prezzo di Riferimento", type="primary"):
-        # Logica base SLU per calcolo massa equivalente / incidenza carico per le tabelle commerciali
+    if st.button("Calcola Carico, Dimensiona Strutture e Genera Modello 3D", type="primary"):
+        # Logica base SLU
         q_totale_kn_mq = (1.3 * (g1_carport + g2_carport)) + (1.5 * neve_carport) + (1.5 * vento_carport)
-        kg_mq_totale = q_totale_kn_mq * 100.0 # Conversione kN a kg
+        kg_mq_totale = q_totale_kn_mq * 100.0
         
-        st.success(f"Carico Totale Equivalente Calcolato (SLU): **{kg_mq_totale:.1f} kg/m²**")
+        st.success(f"Carico Totale Equivalente Calcolato (SLU): **{kg_mq_totale:.1f} kg/m²** (≈ {q_totale_kn_mq:.2f} kN/m²)")
         
-        # Look-up fittizio per le fasce di costo basato sui documenti PDF (solo riferimento base a telaio singolo)
-        prezzo_base = "Richiedere preventivo tecnico"
-        costo_montaggio = "N/D"
+        # Dati per funzioni
+        dati_carport = {
+            "modello": modello_carport_ui,
+            "tipo": mod_data['tipo'],
+            "forma": mod_data['forma'],
+            "larghezza": larghezza_carport,
+            "passo_telai": passo_telai_carport,
+            "num_campate": num_campate_carport,
+            "lunghezza_totale": passo_telai_carport * num_campate_carport,
+            "h_trauf": mod_data['h_trauf'],
+            "h_first": mod_data['h_first'],
+            "q_tot": q_totale_kn_mq,
+            "kg_mq": kg_mq_totale,
+            "g1": g1_carport, "g2": g2_carport, "neve": neve_carport, "vento": vento_carport
+        }
         
-        # Semplificazione look-up basata su SC-P1 per esempio
-        if "SC-P1" in modello_carport_ui:
-            if kg_mq_totale <= 85: prezzo_base, costo_montaggio = "1.649,00 €", "505,00 €"
-            elif kg_mq_totale <= 110: prezzo_base, costo_montaggio = "1.920,00 €", "590,00 €"
-            elif kg_mq_totale <= 135: prezzo_base, costo_montaggio = "2.050,00 €", "630,00 €"
-            else: prezzo_base, costo_montaggio = "Controllare abaco carichi superiori a 135 kg/mq"
-        elif "SHC-P1" in modello_carport_ui:
-            if kg_mq_totale <= 110: prezzo_base, costo_montaggio = "1.662,00 €", "595,00 €"
-            elif kg_mq_totale <= 135: prezzo_base, costo_montaggio = "1.695,00 €", "605,00 €"
-            else: prezzo_base, costo_montaggio = "Controllare abaco carichi superiori a 135 kg/mq"
-            if sichtqualitat_bsh and isinstance(prezzo_base, str) and "€" in prezzo_base:
-                val = float(prezzo_base.replace(".", "").replace(",", ".").replace(" €", "")) * 1.03
-                prezzo_base = f"{val:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-                
+        # Calcolo strutturale
+        ris_calc = esegui_calcolo_carport(dati_carport)
+        dati_carport.update(ris_calc)
+        
         st.write("---")
-        st.markdown(f"### Dati Tabellari di Riferimento per il Modello Selezionato")
-        c_p1, c_p2 = st.columns(2)
-        c_p1.metric("Prezzo Bausatz per Telaio (Passo 5m)", prezzo_base)
-        c_p2.metric("Montaggio per Telaio", costo_montaggio)
-        st.info("I prezzi estratti fanno riferimento al telaio zincato base. Nuovi modelli e tabelle prezzi complete verranno aggiunti su successiva implementazione del database.")
+        
+        # UI Risultati
+        col_dw_c1, col_dw_c2 = st.columns([1, 2])
+        with col_dw_c1:
+            st.markdown("### Dimensionamento Elementi")
+            st.info(f"**Trave di Falda:** {dati_carport['sez_trave']}\n*(M_ed = {dati_carport['M_trave']} kNm)*")
+            st.info(f"**Colonna Portante:** {dati_carport['sez_col']}")
+            st.info(f"**Arcarecci di Copertura:** {dati_carport['sez_arc']}  \n*(Interasse massimo installazione: {dati_carport['passo_arc']:.2f} m)*")
+            
+            st.markdown("### Sistemi di Stabilizzazione")
+            st.warning(f"**Copertura:** {dati_carport['cv_falda']}")
+            st.warning(f"**Verticali:** {dati_carport['cv_vert']}")
+            
+        with col_dw_c2:
+            st.markdown("### Modello 3D Dinamico Carport")
+            fig_3d = genera_modello_3d_carport(dati_carport)
+            st.plotly_chart(fig_3d, use_container_width=True)
+            
+            word_file_cp = genera_word_carport(dati_carport)
+            st.download_button(label="📄 Scarica Relazione Carport in Word (.docx)", data=word_file_cp, file_name=f"Relazione_Carport_{modello_carport_ui.replace(' ', '_')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", type="primary", use_container_width=True)
