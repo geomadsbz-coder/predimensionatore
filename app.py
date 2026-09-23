@@ -41,8 +41,8 @@ def salva_progetto(nome):
     db = carica_db()
     stato_da_salvare = {}
     for key, value in st.session_state.items():
-        # Escludiamo i widget di input temporanei usati per il DB stesso
-        if key in ["nome_nuovo_progetto", "progetto_da_caricare"]:
+        # ESCLUDIAMO i widget temporanei e lo stato interno del data_editor per evitare crash
+        if key in ["nome_nuovo_progetto", "progetto_da_caricare", "xlam_g2_editor"]:
             continue
         # Serializzazione DataFrame Pandas
         if isinstance(value, pd.DataFrame):
@@ -60,6 +60,10 @@ def carica_progetto(nome):
     db = carica_db()
     if nome in db:
         for key, value in db[nome].items():
+            # Filtro di sicurezza: non ricaricare lo stato del widget se presente in vecchi salvataggi
+            if key in ["xlam_g2_editor"]:
+                continue
+            
             if isinstance(value, dict) and value.get("__type__") == "dataframe":
                 st.session_state[key] = pd.DataFrame(value["data"])
             else:
