@@ -916,7 +916,7 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
-tab_principale, tab_xlam = st.tabs(["🏗️ Struttura Principale Capannone (NTC 2018)", "🪵 Dimensionamento Solaio XLAM"])
+tab_principale, tab_xlam, tab_carport = st.tabs(["🏗️ Struttura Principale Capannone", "🪵 Dimensionamento Solaio XLAM", "🚗 Dimensionamento Carport"])
 
 with tab_principale:
     st.subheader("Analisi Capitolato / Appunti di Progetto e File (CAD o PDF)")
@@ -1265,7 +1265,6 @@ with tab_principale:
         st.markdown("### 📝 10. Note Tecniche")
         st.write(dati.get("note_tecniche", "Nessuna nota aggiuntiva."))
 
-# --- NUOVO MODULO A PARTE PER SOLAI XLAM ---
 with tab_xlam:
     st.header("Modulo Dimensionamento Solai in XLAM (NTC 2018)")
     st.markdown("Il dimensionamento considera la gamma stratigrafica tipica per pannelli CLT da solaio a marchio **Stora Enso** (pannelli C a 3, 5, 7 e 8 strati).")
@@ -1320,22 +1319,19 @@ with tab_xlam:
     if st.button("Dimensiona Solaio XLAM", type="primary"):
         g2_totale = df_g2["Carico [kN/m²]"].sum()
         
-        # Riapplico ricalcolo rapido per il pulsante
         if accumulo_xlam_attivo:
             mu_xlam_calc = min(2.0 if tipo_ost_xlam == "Parapetto" else 4.0, max(0.8, 2.0 * h_ost_xlam / qs_k_xlam)) if qs_k_xlam > 0 else 0.8
             carico_neve_finale = mu_xlam_calc * qs_k_xlam
         else:
             carico_neve_finale = qs_k_xlam
             
-        # Parametri legno per XLAM (generalmente classe C24)
-        E_mean = 11000.0  # N/mm2
-        f_mk = 24.0       # N/mm2
+        E_mean = 11000.0  
+        f_mk = 24.0       
         gamma_m = 1.25
         k_mod = 0.8
         f_md = f_mk * k_mod / gamma_m
-        k_def = 0.8 # Classe di servizio 2
+        k_def = 0.8 
         
-        # Carbonizzazione teorica (beta_0 = 0.65 mm/min per pannelli massicci)
         d_ef = 0
         if classe_fuoco_xlam == "R 30": d_ef = 30 * 0.65 + 7.0
         elif classe_fuoco_xlam == "R 60": d_ef = 60 * 0.65 + 7.0
@@ -1344,37 +1340,32 @@ with tab_xlam:
         pannello_idoneo = None
         
         for pannello in pannelli_xlam_db:
-            peso_proprio_g1 = (pannello["spessore"] / 1000.0) * 5.0  # kN/m2
+            peso_proprio_g1 = (pannello["spessore"] / 1000.0) * 5.0  
             
-            # --- VERIFICA SLU ---
             q_slu = 1.3 * (peso_proprio_g1 + g2_totale) + 1.5 * q_k_xlam + 1.5 * 0.5 * carico_neve_finale
-            M_ed = (q_slu * luce_xlam_ui**2) / 8.0 * 1000000.0  # Momento per 1 metro di fascia (N*mm)
+            M_ed = (q_slu * luce_xlam_ui**2) / 8.0 * 1000000.0  
             
             I_eff, W_eff = calcola_proprieta_efficaci_xlam(pannello["strati"], pannello["orientamento"])
-            I_eff *= 1000.0  # Riporto a fascia di 1 metro
+            I_eff *= 1000.0  
             W_eff *= 1000.0
             
             sigma_m = M_ed / W_eff if W_eff > 0 else 999.0
             check_slu = sigma_m <= f_md
             
-            # --- VERIFICA SLE ---
-            # Carichi per fasce (kN/m)
             q_inst_G = peso_proprio_g1 + g2_totale
             q_inst_Q = q_k_xlam + carico_neve_finale
             
-            # Formule di freccia elastica trave appoggiata-appoggiata
             w_inst_G = (5.0 / 384.0) * (q_inst_G / 1000.0) * (luce_xlam_ui * 1000.0)**4 / (E_mean * I_eff)
             w_inst_Q = (5.0 / 384.0) * (q_inst_Q / 1000.0) * (luce_xlam_ui * 1000.0)**4 / (E_mean * I_eff)
             
             w_inst = w_inst_G + w_inst_Q
-            w_fin = w_inst_G * (1.0 + k_def) + w_inst_Q * (1.0 + 0.3 * k_def)  # Assumendo psi_2 = 0.3
+            w_fin = w_inst_G * (1.0 + k_def) + w_inst_Q * (1.0 + 0.3 * k_def) 
             
             L_mm = luce_xlam_ui * 1000.0
             check_sle_inst = w_inst <= (L_mm / limite_w_inst_ui)
             check_sle_fin = w_fin <= (L_mm / limite_w_fin_ui)
             check_sle_netfin = w_fin <= (L_mm / limite_w_netfin_ui)
             
-            # --- VERIFICA AL FUOCO ---
             check_fuoco = True
             sigma_m_fi = 0.0
             f_md_fi = 1.15 * f_mk / 1.0
@@ -1416,3 +1407,77 @@ with tab_xlam:
                     st.write(f"$\sigma_{{m,fi,d}}$ = **{sigma_m_fi:.2f} MPa** (Lim. {f_md_fi:.2f} MPa)")
         else:
             st.error("Nessun pannello XLAM dal database standard (fino a 320mm) risulta verificato. Prova a diminuire la luce, ridurre i carichi, o prevedere dei supporti intermedi per il solaio.")
+
+# --- NUOVO MODULO A PARTE PER I CARPORT ---
+with tab_carport:
+    st.header("Modulo Dimensionamento Carport")
+    st.markdown("Il dimensionamento calcola il carico totale per area ($kg/m^2$) considerando pesi propri, eventuale sovraccarico, neve e vento. La logica pre-seleziona i dati geometrici standard in base al modello scelto dal catalogo[cite: 24, 25, 26, 29, 30, 33].")
+    
+    # Database Carport
+    carport_db = {
+        "SC-L3 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Mehrgelenk-Rahmen (Satteldach)", "b_std": 0.0, "h_trauf": 0.0, "h_first": 0.0, "dn": 0, "file": "530K - Carport System SC-L3.pdf", "is_shc": False},
+        "SC-P1 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Pultdach (steigend)", "b_std": 5.50, "h_trauf": 2.40, "h_first": 3.37, "dn": 10, "file": "110 - Carport System SC-P1.pdf", "is_shc": False},
+        "SHC-P1 (Stahl-BSH)": {"tipo": "Acciaio-BSH", "forma": "Pultdach (steigend)", "b_std": 5.70, "h_trauf": 2.45, "h_first": 3.25, "dn": 8, "file": "110 - Carport System SHC-P1.pdf", "is_shc": True},
+        "SC-P2 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Pultdach (fallend)", "b_std": 5.50, "h_trauf": 3.53, "h_first": 4.50, "dn": 10, "file": "120 - Carport System SC-P2.pdf", "is_shc": False},
+        "SHC-P2 (Stahl-BSH)": {"tipo": "Acciaio-BSH", "forma": "Pultdach (fallend)", "b_std": 5.70, "h_trauf": 3.30, "h_first": 4.10, "dn": 8, "file": "120 - Carport System SHC-P2.pdf", "is_shc": True},
+        "SC-P3 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Y-Doppelcarport", "b_std": 11.00, "h_trauf": 2.50, "h_first": 3.44, "dn": 10, "file": "130 - Carport System SC-P3.pdf", "is_shc": False}
+    }
+
+    modello_carport_ui = st.selectbox("Seleziona Modello Carport", list(carport_db.keys()), key="mod_carport")
+    mod_data = carport_db[modello_carport_ui]
+    
+    st.info(f"Modello selezionato dal file **{mod_data['file']}**.\n- Tipologia Telaio: **{mod_data['tipo']}**\n- Forma: **{mod_data['forma']}**")
+
+    col_g_c1, col_g_c2, col_g_c3 = st.columns(3)
+    with col_g_c1:
+        larghezza_carport = st.number_input("Larghezza Standard (m)", value=mod_data["b_std"] if mod_data["b_std"] > 0 else 10.0, step=0.1)
+    with col_g_c2:
+        passo_telai_carport = st.number_input("Passo Telai (m)", value=5.0, step=0.1) 
+    with col_g_c3:
+        if mod_data["is_shc"]:
+            sichtqualitat_bsh = st.checkbox("Sichtqualität BSH (+3%)", value=False)
+        else:
+            sichtqualitat_bsh = False
+    
+    st.markdown("#### Logica Carichi e Azioni Esterne (Vento / Neve / Permanenti)")
+    col_cc1, col_cc2, col_cc3, col_cc4 = st.columns(4)
+    with col_cc1:
+        g1_carport = st.number_input("G1 - Struttura (kN/m²)", min_value=0.10, value=0.15, step=0.05)
+    with col_cc2:
+        g2_carport = st.number_input("G2 - Pannelli Solari ecc. (kN/m²)", min_value=0.0, value=0.20, step=0.05)
+    with col_cc3:
+        neve_carport = st.number_input("Carico Neve qsk (kN/m²)", min_value=0.0, value=1.50, step=0.10)
+    with col_cc4:
+        vento_carport = st.number_input("Carico Vento qp (kN/m²)", min_value=0.0, value=0.60, step=0.10)
+
+    if st.button("Calcola Carico Totale e Cerca Prezzo di Riferimento", type="primary"):
+        # Logica base SLU per calcolo massa equivalente / incidenza carico per le tabelle commerciali
+        q_totale_kn_mq = (1.3 * (g1_carport + g2_carport)) + (1.5 * neve_carport) + (1.5 * vento_carport)
+        kg_mq_totale = q_totale_kn_mq * 100.0 # Conversione kN a kg
+        
+        st.success(f"Carico Totale Equivalente Calcolato (SLU): **{kg_mq_totale:.1f} kg/m²**")
+        
+        # Look-up fittizio per le fasce di costo basato sui documenti PDF (solo riferimento base a telaio singolo)
+        prezzo_base = "Richiedere preventivo tecnico"
+        costo_montaggio = "N/D"
+        
+        # Semplificazione look-up basata su SC-P1 per esempio
+        if "SC-P1" in modello_carport_ui:
+            if kg_mq_totale <= 85: prezzo_base, costo_montaggio = "1.649,00 €", "505,00 €"
+            elif kg_mq_totale <= 110: prezzo_base, costo_montaggio = "1.920,00 €", "590,00 €"
+            elif kg_mq_totale <= 135: prezzo_base, costo_montaggio = "2.050,00 €", "630,00 €"
+            else: prezzo_base, costo_montaggio = "Controllare abaco carichi superiori a 135 kg/mq"
+        elif "SHC-P1" in modello_carport_ui:
+            if kg_mq_totale <= 110: prezzo_base, costo_montaggio = "1.662,00 €", "595,00 €"
+            elif kg_mq_totale <= 135: prezzo_base, costo_montaggio = "1.695,00 €", "605,00 €"
+            else: prezzo_base, costo_montaggio = "Controllare abaco carichi superiori a 135 kg/mq"
+            if sichtqualitat_bsh and isinstance(prezzo_base, str) and "€" in prezzo_base:
+                val = float(prezzo_base.replace(".", "").replace(",", ".").replace(" €", "")) * 1.03
+                prezzo_base = f"{val:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+                
+        st.write("---")
+        st.markdown(f"### Dati Tabellari di Riferimento per il Modello Selezionato")
+        c_p1, c_p2 = st.columns(2)
+        c_p1.metric("Prezzo Bausatz per Telaio (Passo 5m)", prezzo_base)
+        c_p2.metric("Montaggio per Telaio", costo_montaggio)
+        st.info("I prezzi estratti fanno riferimento al telaio zincato base. Nuovi modelli e tabelle prezzi complete verranno aggiunti su successiva implementazione del database.")
