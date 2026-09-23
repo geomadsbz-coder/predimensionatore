@@ -905,6 +905,9 @@ def genera_word_xlam(dati):
     doc.add_heading('Relazione Tecnica di Calcolo - Solaio in XLAM (NTC 2018)', 0)
     
     doc.add_heading('1. Parametri e Carichi di Progetto', level=1)
+    doc.add_paragraph(f"Località / Comune: {dati.get('luogo', 'N.D.')}")
+    doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')}")
+    doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione di riferimento: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Luce di calcolo del solaio: {dati['luce']} m")
     doc.add_paragraph(f"Carichi permanenti portati (G2): {dati['g2_tot']:.2f} kN/m²")
     doc.add_paragraph(f"Sovraccarico accidentale (Qk): {dati['qk']} kN/m²")
@@ -1492,6 +1495,16 @@ with tab_xlam:
     st.header("Modulo Dimensionamento Solai in XLAM (NTC 2018)")
     st.markdown("Il dimensionamento considera la gamma stratigrafica tipica per pannelli CLT da solaio a marchio **Stora Enso** (pannelli C a 3, 5, 7 e 8 strati).")
     
+    st.markdown("### 📍 Localizzazione Cantiere Solaio (Google Maps e Comune)")
+    col_x_loc1, col_x_loc2 = st.columns([2, 1])
+    with col_x_loc1:
+        maps_url_xlam = st.text_input("Incolla il link di Google Maps del cantiere (Solaio):", value="", key="maps_url_xlam")
+    with col_x_loc2:
+        _, _, luogo_estratto_xlam = estrai_dati_da_url_maps(maps_url_xlam)
+        comune_xlam = st.text_input("Comune di installazione (Solaio)", value=luogo_estratto_xlam, key="comune_xlam")
+
+    st.markdown("---")
+    
     col_x1, col_x2 = st.columns(2)
     with col_x1:
         luce_xlam_ui = st.number_input("Luce di calcolo del solaio (m)", min_value=1.0, value=5.0, step=0.1)
@@ -1510,7 +1523,7 @@ with tab_xlam:
     with col_qx1:
         q_k_xlam = st.number_input("Sovraccarico Accidentale - Qk (kN/m²)", min_value=0.0, value=2.0, step=0.5)
     with col_qx2:
-        qs_k_xlam = st.number_input("Carico Neve al suolo - qsk (kN/m²)", min_value=0.0, value=0.0, step=0.1)
+        qs_k_xlam = st.number_input("Carico Neve base qsk manuale (kN/m²)", min_value=0.0, value=0.0, step=0.1)
 
     st.markdown("#### ❄️ Accumulo Neve (Copertura - NTC 2018)")
     accumulo_xlam_attivo = st.checkbox("Considera Accumulo Neve", key="chk_acc_xlam")
@@ -1520,12 +1533,6 @@ with tab_xlam:
             tipo_ost_xlam = st.selectbox("Tipologia Ostacolo", ["Parapetto", "Edificio adiacente più alto"], key="tipo_ost_xlam")
         with col_ax2:
             h_ost_xlam = st.number_input("Altezza ostacolo h (m)", min_value=0.0, value=1.0, step=0.1, key="h_ost_xlam")
-        
-        mu_xlam_calc = min(2.0 if tipo_ost_xlam == "Parapetto" else 4.0, max(0.8, 2.0 * h_ost_xlam / qs_k_xlam)) if qs_k_xlam > 0 else 0.8
-        carico_neve_finale = mu_xlam_calc * qs_k_xlam
-        st.info(f"Coefficiente di forma calcolato (μ): **{mu_xlam_calc:.2f}** ➔ Carico neve locale da usare a flessione: **{carico_neve_finale:.2f} kN/m²**")
-    else:
-        carico_neve_finale = qs_k_xlam
 
     st.markdown("#### Stati limite di esercizio (SLE) - Limiti di Freccia")
     col_sl1, col_sl2, col_sl3 = st.columns(3)
@@ -1540,13 +1547,21 @@ with tab_xlam:
     classe_fuoco_xlam = st.selectbox("Requisito Antincendio (carbonizzazione all'intradosso)", ["R 0", "R 30", "R 60", "R 90"], key="xlam_fuoco")
 
     if st.button("Dimensiona Solaio XLAM", type="primary"):
+        lat_xlam, lon_xlam, place_xlam = estrai_dati_da_url_maps(maps_url_xlam)
+        comune_finale_xlam = comune_xlam if comune_xlam else place_xlam
+        luogo_str_xlam, qsk_xlam, zona_vento_xlam, press_vento_str_xlam, zona_sismica_xlam, alt_xlam = estrai_parametri_ntc_da_coordinate_e_comune(lat_xlam, lon_xlam, comune_finale_xlam)
+        
+        neve_base_xlam = qsk_xlam if qsk_xlam > 0 else qs_k_xlam
+        
         g2_totale = df_g2["Carico [kN/m²]"].sum()
         
         if accumulo_xlam_attivo:
-            mu_xlam_calc = min(2.0 if tipo_ost_xlam == "Parapetto" else 4.0, max(0.8, 2.0 * h_ost_xlam / qs_k_xlam)) if qs_k_xlam > 0 else 0.8
-            carico_neve_finale = mu_xlam_calc * qs_k_xlam
+            mu_xlam_calc = min(2.0 if tipo_ost_xlam == "Parapetto" else 4.0, max(0.8, 2.0 * h_ost_xlam / neve_base_xlam)) if neve_base_xlam > 0 else 0.8
+            carico_neve_finale = mu_xlam_calc * neve_base_xlam
         else:
-            carico_neve_finale = qs_k_xlam
+            carico_neve_finale = neve_base_xlam
+        
+        st.success(f"📍 Località rilevata: {luogo_str_xlam}  \n🌍 Azione Sismica: **{zona_sismica_xlam}** | 💨 Vento: **{zona_vento_xlam} ({press_vento_str_xlam})**")
             
         E_mean = 11000.0  
         f_mk = 24.0       
@@ -1630,10 +1645,14 @@ with tab_xlam:
                     st.write(f"$\sigma_{{m,fi,d}}$ = **{sigma_m_fi:.2f} MPa** (Lim. {f_md_fi:.2f} MPa)")
             
             st.session_state['xlam_ultimi'] = {
+                'luogo': luogo_str_xlam,
+                'zona_sismica': zona_sismica_xlam,
+                'zona_vento': zona_vento_xlam,
+                'pressione_vento': press_vento_str_xlam,
                 'luce': luce_xlam_ui,
                 'g2_tot': g2_totale,
                 'qk': q_k_xlam,
-                'qsk': qs_k_xlam,
+                'qsk': neve_base_xlam,
                 'accumulo_attivo': accumulo_xlam_attivo,
                 'tipo_ost': tipo_ost_xlam if accumulo_xlam_attivo else "",
                 'h_ost': h_ost_xlam if accumulo_xlam_attivo else 0,
