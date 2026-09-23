@@ -893,6 +893,42 @@ pannelli_xlam_db = [
     {"nome": "CLT 320 C8s", "spessore": 320, "strati": [40, 40, 40, 40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 0, 1, 0, 1]}
 ]
 
+# --- FUNZIONE GENERAZIONE WORD PER SOLAI XLAM ---
+def genera_word_xlam(dati):
+    doc = Document()
+    doc.add_heading('Relazione Tecnica di Calcolo - Solaio in XLAM (NTC 2018)', 0)
+    
+    doc.add_heading('1. Parametri e Carichi di Progetto', level=1)
+    doc.add_paragraph(f"Luce di calcolo del solaio: {dati['luce']} m")
+    doc.add_paragraph(f"Carichi permanenti portati (G2): {dati['g2_tot']:.2f} kN/m²")
+    doc.add_paragraph(f"Sovraccarico accidentale (Qk): {dati['qk']} kN/m²")
+    doc.add_paragraph(f"Carico neve al suolo (qsk): {dati['qsk']} kN/m²")
+    if dati['accumulo_attivo']:
+        doc.add_paragraph(f"Accumulo neve considerato: Tipo ostacolo {dati['tipo_ost']} (h = {dati['h_ost']} m) -> μ = {dati['mu_calc']:.2f}, q_s = {dati['neve_fin']:.2f} kN/m²")
+    doc.add_paragraph(f"Limiti di freccia SLE: w_inst <= L/{dati['lim_inst']}, w_net,fin <= L/{dati['lim_netfin']}, w_fin <= L/{dati['lim_fin']}")
+    doc.add_paragraph(f"Requisito Antincendio: {dati['fuoco']}")
+
+    doc.add_heading('2. Risultati della Verifica e Pannello Ottimizzato', level=1)
+    doc.add_paragraph(f"Pannello CLT Selezionato: {dati['pannello_nome']} (Spessore totale: {dati['spessore']} mm)")
+    doc.add_paragraph(f"Composizione strati (Top -> Bottom): {dati['strati']} mm")
+    doc.add_paragraph(f"Peso proprio strutturale (G1): {dati['g1']:.2f} kN/m²")
+    
+    doc.add_heading('3. Verifiche SLU e SLE', level=1)
+    doc.add_paragraph(f"Verifica a Flessione (SLU): Tensione σ_m,d = {dati['sigma_m']:.2f} MPa (Resistenza f_md = {dati['f_md']:.2f} MPa) -> VERIFICATO")
+    doc.add_paragraph(f"Verifica Deformabilità (SLE):")
+    doc.add_paragraph(f" - w_inst = {dati['w_inst']:.2f} mm (Limite: {dati['lim_inst_mm']:.1f} mm)")
+    doc.add_paragraph(f" - w_fin = {dati['w_fin']:.2f} mm (Limite: {dati['lim_fin_mm']:.1f} mm)")
+    
+    if dati['fuoco'] != "R 0":
+        doc.add_heading('4. Verifica Antincendio', level=1)
+        doc.add_paragraph(f"Strato carbonizzato rimosso (d_ef): {dati['d_ef']:.1f} mm")
+        doc.add_paragraph(f"Tensioni sotto carico di fuoco σ_m,fi,d = {dati['sigma_m_fi']:.2f} MPa (Resistenza f_md,fi = {dati['f_md_fi']:.2f} MPa) -> VERIFICATO")
+
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+    return file_stream
+
 # --- FUNZIONI CARPORT AGGIORNATE CON NTC 2018 E SUPERFICIE C5 ---
 def esegui_calcolo_carport(dati):
     w = dati['larghezza']
@@ -941,7 +977,6 @@ def esegui_calcolo_carport(dati):
     cv_falda = "Tiranti in acciaio incrociati Ø 16 mm (campate di estremità)"
     cv_vert = "Incastro rigido in fondazione (nessun controvento verticale previsto per viabilità)" if "Y" in forma else "Croci di Sant'Andrea in tubolare 80x80x4 mm o L 80x8 (sulla linea colonne)"
 
-    # Calcolo superficie in acciaio da trattare (mq) per anticorrosione / C5
     num_telai = nc + 1
     num_colonne = num_telai * (2 if "Y" in forma else 2)
     h_media_colonna = 3.0
@@ -949,7 +984,6 @@ def esegui_calcolo_carport(dati):
     ml_travi_tot = num_telai * w * (2 if "Y" in forma else 1)
     ml_arcarecci_tot = (n_arc + 1) * (nc * pt)
     
-    # Perimetro medio profili acciaio stimato a 0.8 m
     mq_acciaio_totale = round((ml_colonne_tot + ml_travi_tot + ml_arcarecci_tot) * 0.8, 1)
 
     return {
@@ -1585,14 +1619,56 @@ with tab_xlam:
                 else:
                     st.write(f"Strato carbonizzato rimosso: **{d_ef:.1f} mm**")
                     st.write(f"$\sigma_{{m,fi,d}}$ = **{sigma_m_fi:.2f} MPa** (Lim. {f_md_fi:.2f} MPa)")
+            
+            # Salvataggio dati per export Word
+            st.session_state['xlam_ultimi'] = {
+                'luce': luce_xlam_ui,
+                'g2_tot': g2_totale,
+                'qk': q_k_xlam,
+                'qsk': qs_k_xlam,
+                'accumulo_attivo': accumulo_xlam_attivo,
+                'tipo_ost': tipo_ost_xlam if accumulo_xlam_attivo else "",
+                'h_ost': h_ost_xlam if accumulo_xlam_attivo else 0,
+                'mu_calc': mu_xlam_calc if accumulo_xlam_attivo else 0.8,
+                'neve_fin': carico_neve_finale,
+                'lim_inst': limite_w_inst_ui,
+                'lim_netfin': limite_w_netfin_ui,
+                'lim_fin': limite_w_fin_ui,
+                'fuoco': classe_fuoco_xlam,
+                'pannello_nome': pannello_idoneo['nome'],
+                'spessore': pannello_idoneo['spessore'],
+                'strati': pannello_idoneo['strati'],
+                'g1': peso_proprio_g1,
+                'sigma_m': sigma_m,
+                'f_md': f_md,
+                'w_inst': w_inst,
+                'w_fin': w_fin,
+                'lim_inst_mm': L_mm / limite_w_inst_ui,
+                'lim_fin_mm': L_mm / limite_w_fin_ui,
+                'd_ef': d_ef,
+                'sigma_m_fi': sigma_m_fi if classe_fuoco_xlam != "R 0" else 0,
+                'f_md_fi': f_md_fi if classe_fuoco_xlam != "R 0" else 0
+            }
         else:
             st.error("Nessun pannello XLAM dal database standard (fino a 320mm) risulta verificato. Prova a diminuire la luce, ridurre i carichi, o prevedere dei supporti intermedi per il solaio.")
+
+    if 'xlam_ultimi' in st.session_state:
+        st.markdown("---")
+        dx = st.session_state['xlam_ultimi']
+        word_file_xlam = genera_word_xlam(dx)
+        st.download_button(
+            label="📄 Scarica Relazione Solaio XLAM in Word (.docx)",
+            data=word_file_xlam,
+            file_name=f"Relazione_Solaio_XLAM_{dx['pannello_nome'].replace(' ', '_')}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            type="primary",
+            use_container_width=True
+        )
 
 with tab_carport:
     st.header("Modulo Dimensionamento Strutturale Carport (NTC 2018)")
     st.markdown("Il modulo dimensiona le sezioni, gli arcarecci, i controventi e determina automaticamente i parametri climatici, sismici e la protezione anticorrosione C5 in base alla localizzazione GPS[cite: 24, 25, 26, 29, 30, 33].")
     
-    # Database Carport
     carport_db = {
         "SC-L3 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Y-Doppelcarport (Satteldach)", "b_std": 0.0, "h_trauf": 3.00, "h_first": 4.50, "dn": 10, "file": "530K - Carport System SC-L3.pdf", "is_shc": False},
         "SC-P1 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Pultdach (steigend)", "b_std": 5.50, "h_trauf": 2.40, "h_first": 3.37, "dn": 10, "file": "110 - Carport System SC-P1.pdf", "is_shc": False},
@@ -1635,18 +1711,15 @@ with tab_carport:
         vento_carport = st.number_input("Carico Vento base manuale (kN/m²)", min_value=0.0, value=0.60, step=0.10)
 
     if st.button("Calcola Carico, Dimensiona Strutture e Genera Modello 3D", type="primary"):
-        # Estrazione automatica parametri NTC da coordinate
         lat_cp, lon_cp, place_cp = estrai_dati_da_url_maps(maps_url_cp)
         comune_finale_cp = comune_cp if comune_cp else place_cp
         luogo_str_cp, qsk_cp, zona_vento_cp, press_vento_str_cp, zona_sismica_cp, alt_cp = estrai_parametri_ntc_da_coordinate_e_comune(lat_cp, lon_cp, comune_finale_cp)
         
         pressione_vento_cp_val = float(press_vento_str_cp.split()[0])
         
-        # Sovrascrive o adatta con i valori estratti da GPS se significativi
         neve_effettiva = qsk_cp if qsk_cp > 0 else neve_carport
         vento_effettivo = pressione_vento_cp_val if pressione_vento_cp_val > 0 else vento_carport
 
-        # Verifica ambiente C5 (Marittimo/Costiero o Isole)
         is_marittimo = ("isola" in luogo_str_cp.lower() or "sardegna" in luogo_str_cp.lower() or "pantelleria" in luogo_str_cp.lower() or "lampedusa" in luogo_str_cp.lower() or alt_cp < 40.0)
         ciclo_c5 = "Obbligatorio (Classe di corrosività C5 - Ambiente Marino / Industriale Severo)" if is_marittimo else "Standard protettivo zincato a caldo + verniciatura C3/C4"
 
