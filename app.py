@@ -14,6 +14,57 @@ import requests
 import math
 import pandas as pd
 
+# --- GESTIONE DATABASE E SALVATAGGIO PROGETTI ---
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer): return int(obj)
+        if isinstance(obj, np.floating): return float(obj)
+        if isinstance(obj, np.ndarray): return obj.tolist()
+        return super(NpEncoder, self).default(obj)
+
+DB_FILE = "database_progetti.json"
+
+def carica_db():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def salva_db(db):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(db, f, indent=4, cls=NpEncoder)
+
+def salva_progetto(nome):
+    db = carica_db()
+    stato_da_salvare = {}
+    for key, value in st.session_state.items():
+        # Escludiamo i widget di input temporanei usati per il DB stesso
+        if key in ["nome_nuovo_progetto", "progetto_da_caricare"]:
+            continue
+        # Serializzazione DataFrame Pandas
+        if isinstance(value, pd.DataFrame):
+            stato_da_salvare[key] = {"__type__": "dataframe", "data": value.to_dict(orient="records")}
+        else:
+            try:
+                json.dumps(value, cls=NpEncoder) # test di serializzabilità
+                stato_da_salvare[key] = value
+            except TypeError:
+                pass # Ignora oggetti non serializzabili
+    db[nome] = stato_da_salvare
+    salva_db(db)
+
+def carica_progetto(nome):
+    db = carica_db()
+    if nome in db:
+        for key, value in db[nome].items():
+            if isinstance(value, dict) and value.get("__type__") == "dataframe":
+                st.session_state[key] = pd.DataFrame(value["data"])
+            else:
+                st.session_state[key] = value
+
 # --- FUNZIONE ROBUSTA PER ESTRARRE COORDINATE E NOME LUOGO DA URL DI GOOGLE MAPS ---
 def estrai_dati_da_url_maps(url):
     url = url.strip()
@@ -1138,6 +1189,35 @@ st.set_page_config(page_title="Predimensionamento Strutturale NTC 2018", layout=
 st.title("Generatore Offerte Tecniche e Dimensionamento IA 🏗️")
 
 with st.sidebar:
+    st.header("💾 Database Progetti")
+    db_progetti = carica_db()
+    
+    nuovo_nome = st.text_input("Nome Progetto da salvare:", key="nome_nuovo_progetto")
+    if st.button("💾 Salva Progetto Corrente", use_container_width=True):
+        if nuovo_nome:
+            salva_progetto(nuovo_nome)
+            st.success(f"Progetto '{nuovo_nome}' salvato nel database!")
+            st.rerun()
+        else:
+            st.warning("Inserisci un nome valido.")
+            
+    if db_progetti:
+        progetto_selezionato = st.selectbox("📂 Seleziona un progetto salvato:", list(db_progetti.keys()), key="progetto_da_caricare")
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            if st.button("📂 Carica", use_container_width=True):
+                carica_progetto(progetto_selezionato)
+                st.success(f"Progetto '{progetto_selezionato}' caricato con successo!")
+                st.rerun()
+        with col_c2:
+            if st.button("🗑️ Elimina", use_container_width=True):
+                del db_progetti[progetto_selezionato]
+                salva_db(db_progetti)
+                st.success("Progetto eliminato.")
+                st.rerun()
+                
+    st.markdown("---")
+    
     st.header("Impostazioni Motore")
     api_key = st.text_input("Inserisci qui la tua API Key di Google", type="password")
     
