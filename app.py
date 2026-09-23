@@ -175,8 +175,19 @@ def esegui_calcolo_deterministico(dati_geo):
     lon = dati_geo.get('longitudine', 11.3548)
     comune = dati_geo.get('comune', '')
     
-    luogo_str, qsk, zona_vento, press_vento_str, zona_sismica, altitudine_stimata = estrai_parametri_ntc_da_coordinate_e_comune(lat, lon, comune)
-    pressione_vento = float(press_vento_str.split()[0])
+    luogo_str, qsk_calc, zona_vento, press_vento_str, zona_sismica, altitudine_stimata = estrai_parametri_ntc_da_coordinate_e_comune(lat, lon, comune)
+    
+    # Logica di forzatura manuale Neve / Vento
+    qsk = dati_geo.get('qsk_manuale', 0.0)
+    if qsk <= 0.0:
+        qsk = qsk_calc
+        
+    pressione_vento_man = dati_geo.get('vento_manuale', 0.0)
+    if pressione_vento_man > 0.0:
+        pressione_vento = pressione_vento_man
+        press_vento_str = f"{pressione_vento} kN/mq (Manuale)"
+    else:
+        pressione_vento = float(press_vento_str.split()[0])
     
     spessore_cop = str(dati_geo.get('spessore_pannello', ''))
     tipo_cop = str(dati_geo.get('tipo_isolante', ''))
@@ -578,7 +589,7 @@ def calcola_logistica_trasporti(dati, distinta):
         
     peso_unitario_pilastro_kg = max_h_pilastro * 50.0
     max_pezzi_pilastro_peso = max(1, int(portata_utile_kg / max(1.0, peso_unitario_pilastro_kg)))
-    max_pezzi_per_viaggio_pilastri = max_pezzi_pilastro_peso
+    max_pezzi_per_viaggio_pilastri = max_pezzi_per_viaggio_pilastri = max_pezzi_pilastro_peso
     viaggi_pilastri = math.ceil(num_pilastri / max_pezzi_per_viaggio_pilastri)
 
     ml_tot_profili = distinta['ml_arcarecci'] + dati.get('ml_baraccatura_tot', 0) + dati.get('ml_tot_timpani_entrambe', 0) + dati.get('ml_tot_montanti_long_entrambe', 0)
@@ -1217,6 +1228,13 @@ with tab_principale:
     with col_c3:
         carico_aggiuntivo = st.number_input("Carico aggiuntivo manuale (kN/mq)", min_value=0.0, value=0.0, step=0.05, format="%.2f", key="carico_aggiuntivo")
 
+    st.markdown("#### 🛠️ Forzatura Manuale Carichi (Lascia 0.0 per calcolo automatico da Maps)")
+    col_man1, col_man2 = st.columns(2)
+    with col_man1:
+        qsk_manuale_ui = st.number_input("Carico Neve (qsk) manuale (kN/m²)", min_value=0.0, value=0.0, step=0.1, key="qsk_man_ui")
+    with col_man2:
+        vento_manuale_ui = st.number_input("Pressione Vento manuale (kN/m²)", min_value=0.0, value=0.0, step=0.1, key="vento_man_ui")
+
     st.markdown("### ❄️ Effetti Locali: Accumulo Neve (NTC 2018 / EN 1991-1-3)")
     accumulo_neve_attivo = st.checkbox("Considera Accumulo Neve (Parapetti o variazioni di quota)", value=False, key="accumulo_neve_attivo")
     if accumulo_neve_attivo:
@@ -1265,6 +1283,7 @@ with tab_principale:
                 'tipo_isolante_parete': tipo_isolante_parete,
                 'spessore_pannello_parete': f"{spessore_pannello_parete} mm" if tipo_isolante_parete not in ["Lamiera Semplice", "Nessuno (Aperto)"] else tipo_isolante_parete,
                 'impianto_fv_desc': impianto_fv_desc, 'carico_aggiuntivo': carico_aggiuntivo,
+                'qsk_manuale': qsk_manuale_ui, 'vento_manuale': vento_manuale_ui,
                 'tipo_ostacolo_neve': tipo_ostacolo_neve, 'h_ostacolo_neve': h_ostacolo_neve,
                 'latitudine': lat_estratta, 'longitudine': lon_estratta, 'comune': comune_finale,
                 'classe_fuoco': classe_fuoco_ui,
@@ -1518,12 +1537,12 @@ with tab_xlam:
     
     df_g2 = st.data_editor(st.session_state['carichi_g2_xlam'], num_rows="dynamic", use_container_width=True, key="xlam_g2_editor")
     
-    st.markdown("#### Sovraccarichi Variabili")
+    st.markdown("#### Sovraccarichi Variabili (Lascia 0.0 sul Neve per calcolo automatico da Maps)")
     col_qx1, col_qx2 = st.columns(2)
     with col_qx1:
         q_k_xlam = st.number_input("Sovraccarico Accidentale - Qk (kN/m²)", min_value=0.0, value=2.0, step=0.5)
     with col_qx2:
-        qs_k_xlam = st.number_input("Carico Neve base qsk manuale (kN/m²)", min_value=0.0, value=0.0, step=0.1)
+        qs_k_xlam = st.number_input("Carico Neve al suolo - qsk manuale (kN/m²)", min_value=0.0, value=0.0, step=0.1)
 
     st.markdown("#### ❄️ Accumulo Neve (Copertura - NTC 2018)")
     accumulo_xlam_attivo = st.checkbox("Considera Accumulo Neve", key="chk_acc_xlam")
@@ -1551,7 +1570,8 @@ with tab_xlam:
         comune_finale_xlam = comune_xlam if comune_xlam else place_xlam
         luogo_str_xlam, qsk_xlam, zona_vento_xlam, press_vento_str_xlam, zona_sismica_xlam, alt_xlam = estrai_parametri_ntc_da_coordinate_e_comune(lat_xlam, lon_xlam, comune_finale_xlam)
         
-        neve_base_xlam = qsk_xlam if qsk_xlam > 0 else qs_k_xlam
+        # Logica di priorità: manuale se maggiore di zero, altrimenti automatico da Maps
+        neve_base_xlam = qs_k_xlam if qs_k_xlam > 0.0 else qsk_xlam
         
         g2_totale = df_g2["Carico [kN/m²]"].sum()
         
@@ -1694,7 +1714,7 @@ with tab_xlam:
 
 with tab_carport:
     st.header("Modulo Dimensionamento Strutturale Carport (NTC 2018)")
-    st.markdown("Il modulo dimensiona le sezioni, gli arcarecci, i controventi e determina automaticamente i parametri climatici, sismici e la protezione anticorrosione C5 in base alla localizzazione GPS[cite: 24, 25, 26, 29, 30, 33].")
+    st.markdown("Il modulo dimensiona le sezioni, gli arcarecci, i controventi e determina automaticamente i parametri climatici, sismici e la protezione anticorrosione C5 in base alla localizzazione GPS.")
     
     carport_db = {
         "SC-L3 (Stahl-Stahl)": {"tipo": "Acciaio-Acciaio", "forma": "Y-Doppelcarport (Satteldach)", "b_std": 0.0, "h_trauf": 3.00, "h_first": 4.50, "dn": 10, "file": "530K - Carport System SC-L3.pdf", "is_shc": False},
@@ -1726,16 +1746,16 @@ with tab_carport:
     with col_g_c3:
         num_campate_carport = st.number_input("Numero Campate (Lunghezza)", value=5, min_value=1, step=1)
     
-    st.markdown("#### Logica Carichi e Azioni Esterne (Vento / Neve / Permanenti)")
+    st.markdown("#### Logica Carichi e Azioni Esterne (Lascia 0.0 su Neve/Vento per calcolo automatico da Maps)")
     col_cc1, col_cc2, col_cc3, col_cc4 = st.columns(4)
     with col_cc1:
         g1_carport = st.number_input("G1 - Struttura (kN/m²)", min_value=0.10, value=0.15, step=0.05)
     with col_cc2:
         g2_carport = st.number_input("G2 - Pannelli Solari ecc. (kN/m²)", min_value=0.0, value=0.20, step=0.05)
     with col_cc3:
-        neve_carport = st.number_input("Carico Neve base qsk manuale (kN/m²)", min_value=0.0, value=1.50, step=0.10)
+        neve_carport = st.number_input("Neve qsk manuale (kN/m²)", min_value=0.0, value=0.0, step=0.10)
     with col_cc4:
-        vento_carport = st.number_input("Carico Vento base manuale (kN/m²)", min_value=0.0, value=0.60, step=0.10)
+        vento_carport = st.number_input("Vento base manuale (kN/m²)", min_value=0.0, value=0.0, step=0.10)
 
     if st.button("Calcola Carico, Dimensiona Strutture e Genera Modello 3D", type="primary"):
         lat_cp, lon_cp, place_cp = estrai_dati_da_url_maps(maps_url_cp)
@@ -1744,8 +1764,9 @@ with tab_carport:
         
         pressione_vento_cp_val = float(press_vento_str_cp.split()[0])
         
-        neve_effettiva = qsk_cp if qsk_cp > 0 else neve_carport
-        vento_effettivo = pressione_vento_cp_val if pressione_vento_cp_val > 0 else vento_carport
+        # Logica di priorità: manuale se maggiore di zero, altrimenti automatico da Maps
+        neve_effettiva = neve_carport if neve_carport > 0.0 else qsk_cp
+        vento_effettivo = vento_carport if vento_carport > 0.0 else pressione_vento_cp_val
 
         is_marittimo = ("isola" in luogo_str_cp.lower() or "sardegna" in luogo_str_cp.lower() or "pantelleria" in luogo_str_cp.lower() or "lampedusa" in luogo_str_cp.lower() or alt_cp < 40.0)
         ciclo_c5 = "Obbligatorio (Classe di corrosività C5 - Ambiente Marino / Industriale Severo)" if is_marittimo else "Standard protettivo zincato a caldo + verniciatura C3/C4"
