@@ -757,7 +757,7 @@ def genera_modello_3d(dati):
         y_montanti_long = []
         for y_start in y_portali[:-1]:
             for m in range(1, num_mont_camp_long + 1):
-                y_m = y_start + m * passo_mont_long
+                y_m = y_start + m * passo_montanti_long
                 if y_m < y_start + interasse_portali - 0.1: y_montanti_long.append(y_m)
                     
         for x_wall in [0, luce_totale]:
@@ -825,7 +825,6 @@ def genera_modello_3d(dati):
 def calcola_proprieta_efficaci_xlam(strati, orientamento, def_fuoco=0):
     strati_eff = list(strati)
     rimosso = def_fuoco
-    # Carbonizzazione dal basso (strati_eff[-1] è lo strato inferiore)
     for i in range(len(strati_eff)-1, -1, -1):
         if rimosso >= strati_eff[i]:
             rimosso -= strati_eff[i]
@@ -860,7 +859,7 @@ def calcola_proprieta_efficaci_xlam(strati, orientamento, def_fuoco=0):
             I_eff += I_strato + t * (y_centro - y_g)**2
         y_curr += t
         
-    I_eff *= 0.85 # Metodo gamma approssimato k_sys
+    I_eff *= 0.85 
     
     y_top_long = -1
     y_bot_long = -1
@@ -879,7 +878,6 @@ def calcola_proprieta_efficaci_xlam(strati, orientamento, def_fuoco=0):
     W_eff = I_eff / y_max if y_max > 0 else 0
     return I_eff, W_eff
 
-# Database stratigrafie tipiche Stora Enso per solai
 pannelli_xlam_db = [
     {"nome": "CLT 90 C3s", "spessore": 90, "strati": [30, 30, 30], "orientamento": [1, 0, 1]},
     {"nome": "CLT 100 C3s", "spessore": 100, "strati": [33, 34, 33], "orientamento": [1, 0, 1]},
@@ -895,15 +893,15 @@ pannelli_xlam_db = [
     {"nome": "CLT 320 C8s", "spessore": 320, "strati": [40, 40, 40, 40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 0, 1, 0, 1]}
 ]
 
-# --- FUNZIONI CARPORT ---
+# --- FUNZIONI CARPORT AGGIORNATE CON NTC 2018 E SUPERFICIE C5 ---
 def esegui_calcolo_carport(dati):
     w = dati['larghezza']
     pt = dati['passo_telai']
+    nc = dati['num_campate']
     q_tot = dati['q_tot']
     tipo = dati['tipo']
     forma = dati['forma']
     
-    # Arcarecci
     passo_arc_max = 1.2 if "Acciaio" in tipo else 1.5
     n_arc = math.ceil(w / passo_arc_max)
     passo_arc = w / n_arc if n_arc > 0 else 1.0
@@ -919,7 +917,6 @@ def esegui_calcolo_carport(dati):
         h_arc = max(16, math.ceil(h_req/4)*4)
         sez_arc = f"Legno Lamellare GL24h 10x{int(h_arc)} cm"
 
-    # Trave di falda (Mensola o Semimensola)
     L_cant = w / 2.0 if "Y-Doppelcarport" in forma else w
     M_trave = (q_tot * pt * L_cant**2) / 2.0
 
@@ -936,15 +933,24 @@ def esegui_calcolo_carport(dati):
         h_tr = max(40, math.ceil(h_req_tr/4)*4)
         sez_trave = f"BSH GL24h {b_tr}x{int(h_tr)} cm (consigliata a sezione variabile)"
 
-    # Colonna in Acciaio (tutti i modelli Carport SC e SHC hanno colonna acciaio)
     N_col = q_tot * pt * w
     if N_col < 100: sez_col = "HEB 200"
     elif N_col < 200: sez_col = "HEB 240"
     else: sez_col = "HEB 300"
 
-    # Controventi
     cv_falda = "Tiranti in acciaio incrociati Ø 16 mm (campate di estremità)"
     cv_vert = "Incastro rigido in fondazione (nessun controvento verticale previsto per viabilità)" if "Y" in forma else "Croci di Sant'Andrea in tubolare 80x80x4 mm o L 80x8 (sulla linea colonne)"
+
+    # Calcolo superficie in acciaio da trattare (mq) per anticorrosione / C5
+    num_telai = nc + 1
+    num_colonne = num_telai * (2 if "Y" in forma else 2)
+    h_media_colonna = 3.0
+    ml_colonne_tot = num_colonne * h_media_colonna
+    ml_travi_tot = num_telai * w * (2 if "Y" in forma else 1)
+    ml_arcarecci_tot = (n_arc + 1) * (nc * pt)
+    
+    # Perimetro medio profili acciaio stimato a 0.8 m
+    mq_acciaio_totale = round((ml_colonne_tot + ml_travi_tot + ml_arcarecci_tot) * 0.8, 1)
 
     return {
         "passo_arc": round(passo_arc, 2),
@@ -953,7 +959,8 @@ def esegui_calcolo_carport(dati):
         "sez_col": sez_col,
         "cv_falda": cv_falda,
         "cv_vert": cv_vert,
-        "M_trave": round(M_trave, 1)
+        "M_trave": round(M_trave, 1),
+        "mq_acciaio_totale": mq_acciaio_totale
     }
 
 def genera_modello_3d_carport(dati):
@@ -972,27 +979,20 @@ def genera_modello_3d_carport(dati):
         if "Y-Doppelcarport" in forma:
             x_col = w / 2.0
             z_col = h_trauf
-            # Colonna
             fig.add_trace(go.Scatter3d(x=[x_col, x_col], y=[y, y], z=[0, z_col], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna'))
-            # Travi
             fig.add_trace(go.Scatter3d(x=[x_col, 0], y=[y, y], z=[z_col, h_first], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Mensola'))
             fig.add_trace(go.Scatter3d(x=[x_col, w], y=[y, y], z=[z_col, h_first], mode='lines', line=dict(color='firebrick', width=6), showlegend=False))
         elif "fallend" in forma:
             x_col = 0.0
             z_col = h_first
-            # Colonna
             fig.add_trace(go.Scatter3d(x=[x_col, x_col], y=[y, y], z=[0, z_col], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna'))
-            # Trave
             fig.add_trace(go.Scatter3d(x=[x_col, w], y=[y, y], z=[z_col, h_trauf], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Mensola'))
-        else: # steigend
+        else: 
             x_col = 0.0
             z_col = h_trauf
-            # Colonna
             fig.add_trace(go.Scatter3d(x=[x_col, x_col], y=[y, y], z=[0, z_col], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna'))
-            # Trave
             fig.add_trace(go.Scatter3d(x=[x_col, w], y=[y, y], z=[z_col, h_first], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Mensola'))
 
-    # Arcarecci
     passo_arc = dati['passo_arc']
     n_arc = max(1, int(w / passo_arc))
     for i in range(n_arc + 1):
@@ -1001,16 +1001,13 @@ def genera_modello_3d_carport(dati):
             z_arc = h_first - ((h_first - h_trauf) * (x_arc / (w/2.0))) if x_arc <= w/2.0 else h_trauf + ((h_first - h_trauf) * ((x_arc - w/2.0) / (w/2.0)))
         elif "fallend" in forma:
             z_arc = h_first - ((h_first - h_trauf) * (x_arc / w))
-        else: # steigend
+        else: 
             z_arc = h_trauf + ((h_first - h_trauf) * (x_arc / w))
             
         fig.add_trace(go.Scatter3d(x=[x_arc, x_arc], y=[0, lunghezza_totale], z=[z_arc, z_arc], mode='lines', line=dict(color='gray', width=3, dash='dot'), showlegend=(i==0), name='Arcarecci'))
 
-    # Controventi
     for idx in [0, nc - 1]:
         y1, y2 = y_telai[idx], y_telai[idx + 1]
-        
-        # Diagonali di falda
         for i in range(n_arc):
             xa, xb = i * passo_arc, (i+1) * passo_arc
             if "Y-Doppelcarport" in forma:
@@ -1025,7 +1022,6 @@ def genera_modello_3d_carport(dati):
             
             fig.add_trace(go.Scatter3d(x=[xa, xb, None, xa, xb], y=[y1, y2, None, y2, y1], z=[za, zb, None, za, zb], mode='lines', line=dict(color='forestgreen', width=3), showlegend=(idx==0 and i==0), name='Controventi Falda'))
         
-        # Controventi verticali
         if not "Y" in forma:
             z_col_top = h_first if "fallend" in forma else h_trauf
             fig.add_trace(go.Scatter3d(x=[0, 0, None, 0, 0], y=[y1, y2, None, y2, y1], z=[0, z_col_top, None, z_col_top, 0], mode='lines', line=dict(color='darkorange', width=4), showlegend=(idx==0), name='Controventi Verticali'))
@@ -1039,9 +1035,15 @@ def genera_modello_3d_carport(dati):
 
 def genera_word_carport(dati):
     doc = Document()
-    doc.add_heading('Relazione Tecnica di Calcolo - Modulo Carport', 0)
+    doc.add_heading('Relazione Tecnica di Calcolo - Modulo Carport (NTC 2018)', 0)
     
-    doc.add_heading('1. Tipologia e Geometria', level=1)
+    doc.add_heading('1. Localizzazione e Parametri NTC 2018', level=1)
+    doc.add_paragraph(f"Località / Comune: {dati.get('luogo', 'N.D.')}")
+    doc.add_paragraph(f"Carico Neve base (qsk): {dati.get('neve_qsk', 1.5)} kN/m²")
+    doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione di riferimento: {dati.get('pressione_vento', 'N.D.')}")
+    doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')}")
+
+    doc.add_heading('2. Tipologia e Geometria', level=1)
     doc.add_paragraph(f"Modello Selezionato: {dati['modello']}")
     doc.add_paragraph(f"Tipologia Strutturale: {dati['tipo']} ({dati['forma']})")
     doc.add_paragraph(f"Larghezza Copertura: {dati['larghezza']:.2f} m")
@@ -1049,21 +1051,25 @@ def genera_word_carport(dati):
     doc.add_paragraph(f"Sviluppo Totale (Lunghezza): {dati['lunghezza_totale']:.2f} m")
     doc.add_paragraph(f"Altezza minima (Trave/Gronda): {dati['h_trauf']:.2f} m | Altezza massima (Colmo/Falda): {dati['h_first']:.2f} m")
 
-    doc.add_heading('2. Analisi dei Carichi (NTC 2018)', level=1)
+    doc.add_heading('3. Analisi dei Carichi (NTC 2018)', level=1)
     doc.add_paragraph(f"Carico Strutturale (G1): {dati['g1']:.2f} kN/m²")
     doc.add_paragraph(f"Carico Permanenti (G2): {dati['g2']:.2f} kN/m²")
     doc.add_paragraph(f"Carico Neve (qs_k): {dati['neve']:.2f} kN/m²")
     doc.add_paragraph(f"Carico Vento (qp): {dati['vento']:.2f} kN/m²")
     doc.add_paragraph(f"Carico Totale Equivalente di Calcolo (SLU): {dati['kg_mq']:.1f} kg/m²")
 
-    doc.add_heading('3. Dimensionamento Elementi Strutturali', level=1)
+    doc.add_heading('4. Dimensionamento Elementi Strutturali', level=1)
     doc.add_paragraph(f"Trave Principale di Falda: {dati['sez_trave']}")
     doc.add_paragraph(f"Colonna Portante: {dati['sez_col']}")
     doc.add_paragraph(f"Arcarecci di Copertura: {dati['sez_arc']} (Passo Max: {dati['passo_arc']:.2f} m)")
     
-    doc.add_heading('4. Sistemi di Stabilizzazione', level=1)
+    doc.add_heading('5. Sistemi di Stabilizzazione', level=1)
     doc.add_paragraph(f"Controventi di Falda: {dati['cv_falda']}")
     doc.add_paragraph(f"Controventi Verticali: {dati['cv_vert']}")
+
+    doc.add_heading('6. Protezione Anticorrosione e Trattamento C5', level=1)
+    doc.add_paragraph(f"Stato Trattamento: {dati['ciclo_c5']}")
+    doc.add_paragraph(f"Superficie in acciaio stimata da sottoporre a trattamento protettivo: {dati['mq_acciaio_totale']} mq")
 
     file_stream = io.BytesIO()
     doc.save(file_stream)
@@ -1583,8 +1589,8 @@ with tab_xlam:
             st.error("Nessun pannello XLAM dal database standard (fino a 320mm) risulta verificato. Prova a diminuire la luce, ridurre i carichi, o prevedere dei supporti intermedi per il solaio.")
 
 with tab_carport:
-    st.header("Modulo Dimensionamento Strutturale Carport")
-    st.markdown("Il modulo dimensiona le sezioni, gli arcarecci e i sistemi di controventamento per i modelli di Carport caricati[cite: 24, 25, 26, 29, 30, 33].")
+    st.header("Modulo Dimensionamento Strutturale Carport (NTC 2018)")
+    st.markdown("Il modulo dimensiona le sezioni, gli arcarecci, i controventi e determina automaticamente i parametri climatici, sismici e la protezione anticorrosione C5 in base alla localizzazione GPS[cite: 24, 25, 26, 29, 30, 33].")
     
     # Database Carport
     carport_db = {
@@ -1601,6 +1607,14 @@ with tab_carport:
     
     st.info(f"Tipologia Selezionata: **{mod_data['tipo']}** | Forma Base: **{mod_data['forma']}**")
 
+    st.markdown("### 📍 Localizzazione Cantiere Carport (Google Maps e Comune)")
+    col_c_loc1, col_c_loc2 = st.columns([2, 1])
+    with col_c_loc1:
+        maps_url_cp = st.text_input("Incolla il link di Google Maps del cantiere (Carport):", value="", key="maps_url_cp")
+    with col_c_loc2:
+        _, _, luogo_estratto_cp = estrai_dati_da_url_maps(maps_url_cp)
+        comune_cp = st.text_input("Comune di installazione (Carport)", value=luogo_estratto_cp, key="comune_cp")
+
     col_g_c1, col_g_c2, col_g_c3 = st.columns(3)
     with col_g_c1:
         larghezza_carport = st.number_input("Larghezza Trasversale (m)", value=mod_data["b_std"] if mod_data["b_std"] > 0 else 10.0, step=0.1)
@@ -1616,18 +1630,31 @@ with tab_carport:
     with col_cc2:
         g2_carport = st.number_input("G2 - Pannelli Solari ecc. (kN/m²)", min_value=0.0, value=0.20, step=0.05)
     with col_cc3:
-        neve_carport = st.number_input("Carico Neve qsk (kN/m²)", min_value=0.0, value=1.50, step=0.10)
+        neve_carport = st.number_input("Carico Neve base qsk manuale (kN/m²)", min_value=0.0, value=1.50, step=0.10)
     with col_cc4:
-        vento_carport = st.number_input("Carico Vento qp (kN/m²)", min_value=0.0, value=0.60, step=0.10)
+        vento_carport = st.number_input("Carico Vento base manuale (kN/m²)", min_value=0.0, value=0.60, step=0.10)
 
     if st.button("Calcola Carico, Dimensiona Strutture e Genera Modello 3D", type="primary"):
-        # Logica base SLU
-        q_totale_kn_mq = (1.3 * (g1_carport + g2_carport)) + (1.5 * neve_carport) + (1.5 * vento_carport)
+        # Estrazione automatica parametri NTC da coordinate
+        lat_cp, lon_cp, place_cp = estrai_dati_da_url_maps(maps_url_cp)
+        comune_finale_cp = comune_cp if comune_cp else place_cp
+        luogo_str_cp, qsk_cp, zona_vento_cp, press_vento_str_cp, zona_sismica_cp, alt_cp = estrai_parametri_ntc_da_coordinate_e_comune(lat_cp, lon_cp, comune_finale_cp)
+        
+        pressione_vento_cp_val = float(press_vento_str_cp.split()[0])
+        
+        # Sovrascrive o adatta con i valori estratti da GPS se significativi
+        neve_effettiva = qsk_cp if qsk_cp > 0 else neve_carport
+        vento_effettivo = pressione_vento_cp_val if pressione_vento_cp_val > 0 else vento_carport
+
+        # Verifica ambiente C5 (Marittimo/Costiero o Isole)
+        is_marittimo = ("isola" in luogo_str_cp.lower() or "sardegna" in luogo_str_cp.lower() or "pantelleria" in luogo_str_cp.lower() or "lampedusa" in luogo_str_cp.lower() or alt_cp < 40.0)
+        ciclo_c5 = "Obbligatorio (Classe di corrosività C5 - Ambiente Marino / Industriale Severo)" if is_marittimo else "Standard protettivo zincato a caldo + verniciatura C3/C4"
+
+        q_totale_kn_mq = (1.3 * (g1_carport + g2_carport)) + (1.5 * neve_effettiva) + (1.5 * vento_effettivo)
         kg_mq_totale = q_totale_kn_mq * 100.0
         
-        st.success(f"Carico Totale Equivalente Calcolato (SLU): **{kg_mq_totale:.1f} kg/m²** (≈ {q_totale_kn_mq:.2f} kN/m²)")
+        st.success(f"Località rilevata: {luogo_str_cp}  \nCarico Totale Equivalente Calcolato (SLU): **{kg_mq_totale:.1f} kg/m²** (Neve qsk: {neve_effettiva} kN/m², Vento qp: {vento_effettivo} kN/m²)")
         
-        # Dati per funzioni
         dati_carport = {
             "modello": modello_carport_ui,
             "tipo": mod_data['tipo'],
@@ -1640,16 +1667,20 @@ with tab_carport:
             "h_first": mod_data['h_first'],
             "q_tot": q_totale_kn_mq,
             "kg_mq": kg_mq_totale,
-            "g1": g1_carport, "g2": g2_carport, "neve": neve_carport, "vento": vento_carport
+            "g1": g1_carport, "g2": g2_carport, "neve": neve_effettiva, "vento": vento_effettivo,
+            "luogo": luogo_str_cp,
+            "neve_qsk": neve_effettiva,
+            "zona_vento": zona_vento_cp,
+            "pressione_vento": press_vento_str_cp,
+            "zona_sismica": zona_sismica_cp,
+            "ciclo_c5": ciclo_c5
         }
         
-        # Calcolo strutturale
         ris_calc = esegui_calcolo_carport(dati_carport)
         dati_carport.update(ris_calc)
         
         st.write("---")
         
-        # UI Risultati
         col_dw_c1, col_dw_c2 = st.columns([1, 2])
         with col_dw_c1:
             st.markdown("### Dimensionamento Elementi")
@@ -1660,6 +1691,10 @@ with tab_carport:
             st.markdown("### Sistemi di Stabilizzazione")
             st.warning(f"**Copertura:** {dati_carport['cv_falda']}")
             st.warning(f"**Verticali:** {dati_carport['cv_vert']}")
+
+            st.markdown("### Trattamento Anticorrosione C5")
+            st.error(f"**Condizione:** {dati_carport['ciclo_c5']}")
+            st.metric("Superficie Acciaio da Trattare", f"{dati_carport['mq_acciaio_totale']} mq")
             
         with col_dw_c2:
             st.markdown("### Modello 3D Dinamico Carport")
