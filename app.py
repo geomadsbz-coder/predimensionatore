@@ -598,7 +598,10 @@ def calcola_logistica_trasporti(dati, distinta):
     }
 
 def genera_word_report(dati, distinta, logistica):
-    doc = Document()
+    try:
+        doc = Document('Carta Intestata.docx')
+    except Exception:
+        doc = Document()
     doc.add_heading('Relazione Tecnica di Predimensionamento, Calcolo e Logistica (NTC 2018)', 0)
     
     doc.add_heading('1. Parametri Geometrici, Climatici, Sismici e di Configurazione', level=1)
@@ -895,7 +898,10 @@ pannelli_xlam_db = [
 
 # --- FUNZIONE GENERAZIONE WORD PER SOLAI XLAM ---
 def genera_word_xlam(dati):
-    doc = Document()
+    try:
+        doc = Document('Carta Intestata.docx')
+    except Exception:
+        doc = Document()
     doc.add_heading('Relazione Tecnica di Calcolo - Solaio in XLAM (NTC 2018)', 0)
     
     doc.add_heading('1. Parametri e Carichi di Progetto', level=1)
@@ -1068,7 +1074,10 @@ def genera_modello_3d_carport(dati):
     return fig
 
 def genera_word_carport(dati):
-    doc = Document()
+    try:
+        doc = Document('Carta Intestata.docx')
+    except Exception:
+        doc = Document()
     doc.add_heading('Relazione Tecnica di Calcolo - Modulo Carport (NTC 2018)', 0)
     
     doc.add_heading('1. Localizzazione e Parametri NTC 2018', level=1)
@@ -1620,7 +1629,6 @@ with tab_xlam:
                     st.write(f"Strato carbonizzato rimosso: **{d_ef:.1f} mm**")
                     st.write(f"$\sigma_{{m,fi,d}}$ = **{sigma_m_fi:.2f} MPa** (Lim. {f_md_fi:.2f} MPa)")
             
-            # Salvataggio dati per export Word
             st.session_state['xlam_ultimi'] = {
                 'luce': luce_xlam_ui,
                 'g2_tot': g2_totale,
