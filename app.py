@@ -14,7 +14,7 @@ import requests
 import math
 import pandas as pd
 
-# --- GESTIONE DATABASE E SALVATAGGIO PROGETTI ---
+# --- GESTIONE SALVATAGGIO PROGETTI (FILE LOCALI) ---
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer): return int(obj)
@@ -22,27 +22,11 @@ class NpEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray): return obj.tolist()
         return super(NpEncoder, self).default(obj)
 
-DB_FILE = "database_progetti.json"
-
-def carica_db():
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def salva_db(db):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(db, f, indent=4, cls=NpEncoder)
-
-def salva_progetto(nome):
-    db = carica_db()
+def genera_json_progetto():
     stato_da_salvare = {}
     for key, value in st.session_state.items():
-        # Aggiunto "geo_file_cp" alla lista delle chiavi da ignorare
-        if key in ["nome_nuovo_progetto", "progetto_da_caricare", "xlam_g2_editor", "geo_file_cp"]:
+        # Escludiamo i file uploader e i dataframe temporanei per evitare crash
+        if key in ["xlam_g2_editor", "geo_file_cp", "carica_progetto_file"]:
             continue
         if isinstance(value, pd.DataFrame):
             stato_da_salvare[key] = {"__type__": "dataframe", "data": value.to_dict(orient="records")}
@@ -52,21 +36,16 @@ def salva_progetto(nome):
                 stato_da_salvare[key] = value
             except TypeError:
                 pass 
-    db[nome] = stato_da_salvare
-    salva_db(db)
+    return json.dumps(stato_da_salvare, cls=NpEncoder, indent=4)
 
-def carica_progetto(nome):
-    db = carica_db()
-    if nome in db:
-        for key, value in db[nome].items():
-            # Aggiunto "geo_file_cp" per prevenire il crash caricando vecchi progetti salvati
-            if key in ["xlam_g2_editor", "geo_file_cp"]:
-                continue
-            
-            if isinstance(value, dict) and value.get("__type__") == "dataframe":
-                st.session_state[key] = pd.DataFrame(value["data"])
-            else:
-                st.session_state[key] = value
+def applica_json_progetto(json_string):
+    dati_progetto = json.loads(json_string)
+    for key, value in dati_progetto.items():
+        if isinstance(value, dict) and value.get("__type__") == "dataframe":
+            st.session_state[key] = pd.DataFrame(value["data"])
+        else:
+            st.session_state[key] = value
+
 
 # --- FUNZIONE ROBUSTA PER ESTRARRE COORDINATE E NOME LUOGO DA URL DI GOOGLE MAPS ---
 def estrai_dati_da_url_maps(url):
@@ -1102,18 +1081,18 @@ def esegui_calcolo_carport(dati):
     kg_nodo_base = round(35.0 + M_col * 0.25 + N_col * 0.05, 1)
 
     # --- Nuovo Dimensionamento Plinto di fondazione (Ciabatta + Dado) ---
-    B_dado = 0.60  # Dimensione fissa del dado (60x60 cm) per alloggio piastra e tirafondi
-    H_dado = 0.50  # Altezza del dado
-    B_pl = 0.8     # Base di partenza della ciabatta
+    B_dado = 0.60  
+    H_dado = 0.50  
+    B_pl = 0.8     
     
     while True:
-        H_pad = max(0.4, math.ceil((B_pl / 4)*10)/10) # Altezza ciabatta proporzionale alla base
+        H_pad = max(0.4, math.ceil((B_pl / 4)*10)/10)
         vol_dado = B_dado * B_dado * H_dado
         vol_pad = B_pl * B_pl * H_pad
         
-        N_cls = (vol_dado + vol_pad) * 25.0 # Peso calcestruzzo (25 kN/m3)
+        N_cls = (vol_dado + vol_pad) * 25.0 
         N_tot = N_col + N_cls
-        M_tot = M_col + V_col * (H_dado + H_pad) # Trasporto del momento flettente e ribaltante all'estradosso terreno
+        M_tot = M_col + V_col * (H_dado + H_pad) 
         
         area_pl = B_pl * B_pl
         W_pl = (B_pl**3) / 6.0
@@ -1265,39 +1244,37 @@ def genera_modello_3d_carport(dati):
     )
     return fig
 
-# --- RESTO DEL CODICE INVARIATO (Moduli XLAM, Interfaccia Streamlit, Database, ecc.) ---
+# --- INIZIO APPLICAZIONE STREAMLIT ---
 
 st.set_page_config(page_title="Predimensionamento Strutturale NTC 2018", layout="wide")
 st.title("Generatore Offerte Tecniche e Dimensionamento IA 🏗️")
 
 with st.sidebar:
-    st.header("💾 Database Progetti")
-    db_progetti = carica_db()
+    st.header("💾 Gestione Progetto")
     
-    nuovo_nome = st.text_input("Nome Progetto da salvare:", key="nome_nuovo_progetto")
-    if st.button("💾 Salva Progetto Corrente", use_container_width=True):
-        if nuovo_nome:
-            salva_progetto(nuovo_nome)
-            st.success(f"Progetto '{nuovo_nome}' salvato nel database!")
-            st.rerun()
-        else:
-            st.warning("Inserisci un nome valido.")
-            
-    if db_progetti:
-        progetto_selezionato = st.selectbox("📂 Seleziona un progetto salvato:", list(db_progetti.keys()), key="progetto_da_caricare")
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            if st.button("📂 Carica", use_container_width=True):
-                carica_progetto(progetto_selezionato)
-                st.success(f"Progetto '{progetto_selezionato}' caricato con successo!")
+    # Download (Esporta)
+    json_progetto = genera_json_progetto()
+    st.download_button(
+        label="💾 Scarica File di Progetto (.json)",
+        data=json_progetto,
+        file_name=f"Progetto_{st.session_state.get('comune_cantiere_ui', 'Strutturale').replace(' ', '_')}.json",
+        mime="application/json",
+        use_container_width=True
+    )
+    
+    st.markdown("---")
+    
+    # Upload (Importa)
+    file_progetto = st.file_uploader("📂 Carica un progetto salvato (.json)", type=["json"], key="carica_progetto_file")
+    if file_progetto is not None:
+        if st.button("🔄 Ripristina Progetto", use_container_width=True):
+            try:
+                applica_json_progetto(file_progetto.getvalue().decode("utf-8"))
+                st.success("Progetto caricato con successo!")
                 st.rerun()
-        with col_c2:
-            if st.button("🗑️ Elimina", use_container_width=True):
-                del db_progetti[progetto_selezionato]
-                salva_db(db_progetti)
-                st.success("Progetto eliminato.")
-                st.rerun()
-                
+            except Exception as e:
+                st.error(f"Errore nel caricamento del file: {e}")
+
     st.markdown("---")
     
     st.header("Impostazioni Motore")
