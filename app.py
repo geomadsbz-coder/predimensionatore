@@ -1012,6 +1012,7 @@ def esegui_calcolo_carport(dati):
     q_tot = dati['q_tot']
     tipo = dati['tipo']
     forma = dati['forma']
+    vento = dati.get('vento', 0.0)
     
     passo_arc_max = 1.2 if "Acciaio" in tipo else 1.5
     n_arc = math.ceil(w / passo_arc_max)
@@ -1023,40 +1024,65 @@ def esegui_calcolo_carport(dati):
         elif M_arc < 10: sez_arc = "Profilo a Z pressopiegato 150x2.5 mm"
         else: sez_arc = "Profilo a Z pressopiegato 200x3.0 mm"
     else: 
-        w_req = (M_arc * 100) / 14.5
+        w_req = (M_arc * 100) / 1.45  # FIX: Corretta unità di misura kN/cm2
         h_req = math.sqrt((6*w_req)/10.0)
         h_arc = max(16, math.ceil(h_req/4)*4)
         sez_arc = f"Legno Lamellare GL24h 10x{int(h_arc)} cm"
 
-    L_cant = w / 2.0 if "Y-Doppelcarport" in forma else w
-    M_trave = (q_tot * pt * L_cant**2) / 2.0
+    # FIX: Schema statico corretto per le travi in base alla forma
+    if "Y" in forma:
+        L_cant = w / 2.0
+        M_trave = (q_tot * pt * L_cant**2) / 2.0
+    else:
+        M_trave = (q_tot * pt * w**2) / 8.0
 
     if "Acciaio" in tipo.split('-')[1]:
         w_req_tr = (M_trave * 100) / 27.5
-        if w_req_tr < 200: sez_trave = "IPE 240 / HEA 200"
-        elif w_req_tr < 500: sez_trave = "IPE 330 / HEA 260"
-        elif w_req_tr < 1000: sez_trave = "IPE 450 / HEA 340"
+        # FIX: Scaglioni più fluidi e proporzionati per le IPE/HEA
+        if w_req_tr < 150: sez_trave = "IPE 200 / HEA 140"
+        elif w_req_tr < 250: sez_trave = "IPE 240 / HEA 180"
+        elif w_req_tr < 420: sez_trave = "IPE 300 / HEA 220"
+        elif w_req_tr < 700: sez_trave = "IPE 360 / HEA 260"
+        elif w_req_tr < 1100: sez_trave = "IPE 450 / HEA 320"
+        elif w_req_tr < 1500: sez_trave = "IPE 500 / HEA 360"
         else: sez_trave = "IPE 600 / HEB 400"
     else:
-        w_req_tr = (M_trave * 100) / 14.5
+        w_req_tr = (M_trave * 100) / 1.45  # FIX: Corretta unità di misura kN/cm2
         b_tr = 20
         h_req_tr = math.sqrt((6*w_req_tr)/b_tr)
-        h_tr = max(40, math.ceil(h_req_tr/4)*4)
+        h_tr = max(24, math.ceil(h_req_tr/4)*4)
         sez_trave = f"BSH GL24h {b_tr}x{int(h_tr)} cm (consigliata a sezione variabile)"
 
-    N_col = q_tot * pt * w
-    if N_col < 100: sez_col = "HEB 200"
-    elif N_col < 200: sez_col = "HEB 240"
-    else: sez_col = "HEB 300"
+    # FIX: Dimensionamento colonne al momento flettente (vento/sbilanciamento)
+    h_media = (dati.get('h_trauf', 2.4) + dati.get('h_first', 3.0)) / 2.0
+    if "Y" in forma:
+        # Colonna singola centrale: assorbe squilibrio carichi + momento vento
+        M_col = (M_trave * 0.60) + (vento * 1.5 * pt * h_media**2 / 2.0)
+        w_req_col = (M_col * 100) / 27.5
+        if w_req_col < 150: sez_col = "HEB 140 / HEA 160"
+        elif w_req_col < 300: sez_col = "HEB 180 / HEA 200"
+        elif w_req_col < 600: sez_col = "HEB 220 / HEA 260"
+        elif w_req_col < 1000: sez_col = "HEB 280 / HEA 320"
+        else: sez_col = "HEB 320 / HEB 360"
+    else:
+        # Colonne laterali: assorbono momento vento e compressione ripartita
+        M_col = (vento * 1.5 * pt * h_media**2) / 2.0
+        N_col = (q_tot * pt * w) / 2.0
+        # Modulo equivalente empirico (flessione + compressione)
+        w_req_col = (M_col * 100) / 27.5 + (N_col / 2.0) 
+        if w_req_col < 80: sez_col = "Tubolare 100x100x4 / HEA 120"
+        elif w_req_col < 150: sez_col = "Tubolare 150x150x5 / HEA 140"
+        elif w_req_col < 300: sez_col = "HEB 160 / HEA 180"
+        else: sez_col = "HEB 200 / HEA 220"
 
     cv_falda = "Tiranti in acciaio incrociati Ø 16 mm (campate di estremità)"
     cv_vert = "Incastro rigido in fondazione (nessun controvento verticale previsto per viabilità)" if "Y" in forma else "Croci di Sant'Andrea in tubolare 80x80x4 mm o L 80x8 (sulla linea colonne)"
 
     num_telai = nc + 1
-    num_colonne = num_telai * (2 if "Y" in forma else 2)
-    h_media_colonna = 3.0
+    num_colonne = num_telai * (1 if "Y" in forma else 2) # FIX: Calcolo numero corretto
+    h_media_colonna = h_media
     ml_colonne_tot = num_colonne * h_media_colonna
-    ml_travi_tot = num_telai * w * (2 if "Y" in forma else 1)
+    ml_travi_tot = num_telai * w * 1
     ml_arcarecci_tot = (n_arc + 1) * (nc * pt)
     
     mq_acciaio_totale = round((ml_colonne_tot + ml_travi_tot + ml_arcarecci_tot) * 0.8, 1)
@@ -1966,10 +1992,13 @@ with tab_carport:
         is_marittimo = ("isola" in luogo_str_cp.lower() or "sardegna" in luogo_str_cp.lower() or "pantelleria" in luogo_str_cp.lower() or "lampedusa" in luogo_str_cp.lower() or alt_cp < 40.0)
         ciclo_c5 = "Obbligatorio (Classe di corrosività C5 - Ambiente Marino / Industriale Severo)" if is_marittimo else "Standard protettivo zincato a caldo + verniciatura C3/C4"
 
-        q_totale_kn_mq = (1.3 * (g1_carport + g2_carport)) + (1.5 * neve_effettiva) + (1.5 * vento_effettivo)
+        # NUOVO: Combinazione Carichi NTC 2018 (Valutazione condizioni più gravose con riduzioni)
+        q_neve_primario = (1.3 * (g1_carport + g2_carport)) + (1.5 * neve_effettiva) + (1.5 * 0.6 * vento_effettivo)
+        q_vento_primario = (1.3 * (g1_carport + g2_carport)) + (1.5 * vento_effettivo) + (1.5 * 0.5 * neve_effettiva)
+        q_totale_kn_mq = max(q_neve_primario, q_vento_primario)
         kg_mq_totale = q_totale_kn_mq * 100.0
         
-        st.success(f"Località rilevata: {luogo_str_cp}  \nCarico Totale Equivalente Calcolato (SLU): **{kg_mq_totale:.1f} kg/m²** (Neve qsk: {neve_effettiva} kN/m², Vento qp: {vento_effettivo} kN/m²)")
+        st.success(f"Località rilevata: {luogo_str_cp}  \nCarico Totale Equivalente Calcolato (SLU combinato NTC): **{kg_mq_totale:.1f} kg/m²** (Neve qsk: {neve_effettiva} kN/m², Vento qp: {vento_effettivo} kN/m²)")
         
         dati_carport = {
             "modello": modello_carport_ui,
