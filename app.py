@@ -14,39 +14,41 @@ import requests
 import math
 import pandas as pd
 
-# --- FUNZIONE GLOBALE DI RESET DATI ---
+# --- FUNZIONE GLOBALE DI RESET DATI TRAMITE CALLBACK ---
 def azzera_dati(modulo="tutto"):
-    # Valori di default per riportare i widget numerici e di testo allo stato vergine
-    defaults = {
-        'lunghezza_edificio_ui': 25.0, 'interasse_portali_ui': 5.0, 'luce_totale_ui': 39.6,
-        'altezza_gronda_ui': 9.0, 'altezza_colmo_ui': 12.21, 'maps_url_ui': '', 'comune_cantiere_ui': '',
-        'testo_commerciale': '', 'qsk_man_ui': 0.0, 'vento_man_ui': 0.0, 'carico_aggiuntivo': 0.0,
-        'h_ostacolo_neve': 1.0, 'spessore_panni_pir': 50, 'spessore_panni_lana': 100,
-        
-        'maps_url_xlam': '', 'comune_xlam': '', 'luce_xlam_ui': 5.0, 'q_k_xlam': 2.0, 'qs_k_xlam': 0.0,
-        
-        'luce_tr': 5.0, 'q_distr_man': 0.0, 'f_conc_man': 0.0, 'pos_f_conc': 2.5,
-        
-        'maps_url_cp': '', 'comune_cp': '',
-        'larghezza_carport': 10.0, 'passo_telai_carport': 5.0, 'num_campate_carport': 5,
-        'g1_carport': 0.15, 'g2_carport': 0.20, 'neve_cp_man': 0.0, 'vento_cp_man': 0.0
-    }
-    
-    keys_to_clear = []
-    for k in st.session_state.keys():
-        if modulo == "principale" and (k.endswith('_ui') or k in ['dati_ultimi', 'testo_commerciale', 'carico_aggiuntivo', 'h_ostacolo_neve']): keys_to_clear.append(k)
-        elif modulo == "xlam" and ('xlam' in k): keys_to_clear.append(k)
-        elif modulo == "travi" and ('tr' in k or 'man' in k or 'travi' in k): keys_to_clear.append(k)
-        elif modulo == "carport" and ('cp' in k or 'carport' in k): keys_to_clear.append(k)
-        elif modulo == "tutto": keys_to_clear.append(k)
+    keys_principale = [
+        'maps_url_ui', 'comune_cantiere_ui', 'lunghezza_edificio_ui', 'interasse_portali_ui',
+        'luce_totale_ui', 'altezza_gronda_ui', 'altezza_colmo_ui', 'cat_strutt', 'tipo_travatura',
+        'num_appoggi', 'pos_arcarecci', 'tipo_isolante', 'spessore_panni_pir', 'spessore_panni_lana',
+        'impianto_fv', 'carico_aggiuntivo', 'qsk_man_ui', 'vento_man_ui', 'accumulo_neve_attivo',
+        'tipo_ostacolo_neve', 'h_ostacolo_neve', 'tipo_isolante_parete', 'spessore_parete_pir',
+        'spessore_parete_lana', 'classe_fuoco_ui', 'classe_servizio_ui', 'dati_ultimi', 'testo_commerciale'
+    ]
+    keys_xlam = [
+        'maps_url_xlam', 'comune_xlam', 'luce_xlam_ui', 'xlam_g2_editor', 'carichi_g2_xlam', 'q_k_xlam', 'qs_k_xlam',
+        'chk_acc_xlam', 'tipo_ost_xlam', 'h_ost_xlam', 'limite_w_inst_ui', 'limite_w_netfin_ui',
+        'limite_w_fin_ui', 'xlam_fuoco', 'xlam_ultimi'
+    ]
+    keys_travi = [
+        'mat_trave_ui', 'grado_acc_ui', 'classe_legno_ui', 'essenza_legno_ui', 'luce_tr',
+        'usa_xlam_ui', 'q_distr_man', 'usa_storico_ui', 'trave_sel_ui', 'f_conc_man', 'pos_f_conc',
+        'travi_storico'
+    ]
+    keys_carport = [
+        'mod_carport', 'maps_url_cp', 'comune_cp', 'larghezza_carport', 'passo_telai_carport',
+        'num_campate_carport', 'g1_carport', 'g2_carport', 'neve_cp_man', 'vento_cp_man',
+        'geo_file_cp', 'tipo_terreno_ui'
+    ]
 
+    keys_to_clear = []
+    if modulo == "principale" or modulo == "tutto": keys_to_clear.extend(keys_principale)
+    if modulo == "xlam" or modulo == "tutto": keys_to_clear.extend(keys_xlam)
+    if modulo == "travi" or modulo == "tutto": keys_to_clear.extend(keys_travi)
+    if modulo == "carport" or modulo == "tutto": keys_to_clear.extend(keys_carport)
+    
     for k in keys_to_clear:
-        if k in defaults:
-            st.session_state[k] = defaults[k]
-        else:
+        if k in st.session_state:
             del st.session_state[k]
-            
-    st.rerun()
 
 # --- GESTIONE SALVATAGGIO PROGETTI (FILE LOCALI) ---
 class NpEncoder(json.JSONEncoder):
@@ -181,7 +183,6 @@ def estrai_portanza_da_pdf(file_upload):
 def estrai_parametri_ntc_da_coordinate_e_comune(lat, lon, comune_input=""):
     comune_pulito = comune_input.strip().lower()
     
-    # MODIFICA: Se l'utente non ha usato Maps ma ha inserito manualmente il comune, si valuta prima il testo per assegnare latitudine fittizia
     is_default = (abs(lat - 46.4983) < 0.001 and abs(lon - 11.3548) < 0.001)
     if is_default and comune_pulito:
         if any(x in comune_pulito for x in ["pantelleria", "lampedusa", "linosa", "sardegna", "cagliari", "sassari", "nuoro", "oristano", "sicilia", "palermo", "catania", "messina", "trapani", "siracusa", "agrigento", "enna", "ragusa", "caltanissetta", "calabria", "reggio", "catanzaro", "cosenza", "crotone", "vibo", "puglia", "bari", "lecce", "taranto", "brindisi", "foggia", "campania", "napoli", "salerno", "caserta", "avellino", "benevento", "basilicata", "potenza", "matera"]):
@@ -1366,8 +1367,7 @@ with st.sidebar:
         st.info("🤖 Modalità Ibrida con IA attiva")
 
     st.markdown("---")
-    if st.button("🔄 Nuovo Progetto / Reset Totale", use_container_width=True):
-        azzera_dati("tutto")
+    st.button("🔄 Nuovo Progetto / Reset Totale", use_container_width=True, on_click=azzera_dati, args=("tutto",))
 
 
 tab_principale, tab_xlam, tab_travi, tab_carport = st.tabs(["🏗️ Struttura Principale Capannone", "🪵 Dimensionamento Solaio XLAM", "📏 Dimensionamento Travi", "🚗 Dimensionamento Carport"])
@@ -1484,8 +1484,7 @@ with tab_principale:
     with col_btn_run:
         btn_calc_principale = st.button("Esegui Dimensionamento, Logistica e Genera Modello 3D", type="primary")
     with col_btn_reset:
-        if st.button("🔄 Reset Modulo", use_container_width=True, key="reset_main_btn"):
-            azzera_dati("principale")
+        st.button("🔄 Reset Modulo", use_container_width=True, key="reset_main_btn", on_click=azzera_dati, args=("principale",))
             
     if btn_calc_principale:
         if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or altezza_colmo_ui <= 0:
@@ -1793,8 +1792,7 @@ with tab_xlam:
     with col_btn_xlam_run:
         btn_calc_xlam = st.button("Dimensiona Solaio XLAM", type="primary")
     with col_btn_xlam_reset:
-        if st.button("🔄 Reset Modulo", use_container_width=True, key="reset_xlam_btn"):
-            azzera_dati("xlam")
+        st.button("🔄 Reset Modulo", use_container_width=True, key="reset_xlam_btn", on_click=azzera_dati, args=("xlam",))
 
     if btn_calc_xlam:
         lat_xlam, lon_xlam, place_xlam = estrai_dati_da_url_maps(maps_url_xlam)
@@ -2003,8 +2001,7 @@ with tab_travi:
     with col_btn_tr_run:
         btn_calc_travi = st.button("Dimensiona Trave e Salva in Storico", type="primary")
     with col_btn_tr_reset:
-        if st.button("🔄 Reset Modulo", use_container_width=True, key="reset_travi_btn"):
-            azzera_dati("travi")
+        st.button("🔄 Reset Modulo", use_container_width=True, key="reset_travi_btn", on_click=azzera_dati, args=("travi",))
 
     if btn_calc_travi:
         a = pos_f_conc
@@ -2116,8 +2113,7 @@ with tab_carport:
     with col_btn_cp_run:
         btn_calc_carport = st.button("Calcola Carico, Dimensiona Strutture e Genera Modello 3D", type="primary")
     with col_btn_cp_reset:
-        if st.button("🔄 Reset Modulo", use_container_width=True, key="reset_cp_btn"):
-            azzera_dati("carport")
+        st.button("🔄 Reset Modulo", use_container_width=True, key="reset_cp_btn", on_click=azzera_dati, args=("carport",))
 
     if btn_calc_carport:
         lat_cp, lon_cp, place_cp = estrai_dati_da_url_maps(maps_url_cp)
