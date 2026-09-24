@@ -41,7 +41,8 @@ def salva_progetto(nome):
     db = carica_db()
     stato_da_salvare = {}
     for key, value in st.session_state.items():
-        if key in ["nome_nuovo_progetto", "progetto_da_caricare", "xlam_g2_editor"]:
+        # Aggiunto "geo_file_cp" alla lista delle chiavi da ignorare
+        if key in ["nome_nuovo_progetto", "progetto_da_caricare", "xlam_g2_editor", "geo_file_cp"]:
             continue
         if isinstance(value, pd.DataFrame):
             stato_da_salvare[key] = {"__type__": "dataframe", "data": value.to_dict(orient="records")}
@@ -58,7 +59,8 @@ def carica_progetto(nome):
     db = carica_db()
     if nome in db:
         for key, value in db[nome].items():
-            if key in ["xlam_g2_editor"]:
+            # Aggiunto "geo_file_cp" per prevenire il crash caricando vecchi progetti salvati
+            if key in ["xlam_g2_editor", "geo_file_cp"]:
                 continue
             
             if isinstance(value, dict) and value.get("__type__") == "dataframe":
