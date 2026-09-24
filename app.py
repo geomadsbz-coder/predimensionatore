@@ -14,6 +14,40 @@ import requests
 import math
 import pandas as pd
 
+# --- FUNZIONE GLOBALE DI RESET DATI ---
+def azzera_dati(modulo="tutto"):
+    # Valori di default per riportare i widget numerici e di testo allo stato vergine
+    defaults = {
+        'lunghezza_edificio_ui': 25.0, 'interasse_portali_ui': 5.0, 'luce_totale_ui': 39.6,
+        'altezza_gronda_ui': 9.0, 'altezza_colmo_ui': 12.21, 'maps_url_ui': '', 'comune_cantiere_ui': '',
+        'testo_commerciale': '', 'qsk_man_ui': 0.0, 'vento_man_ui': 0.0, 'carico_aggiuntivo': 0.0,
+        'h_ostacolo_neve': 1.0, 'spessore_panni_pir': 50, 'spessore_panni_lana': 100,
+        
+        'maps_url_xlam': '', 'comune_xlam': '', 'luce_xlam_ui': 5.0, 'q_k_xlam': 2.0, 'qs_k_xlam': 0.0,
+        
+        'luce_tr': 5.0, 'q_distr_man': 0.0, 'f_conc_man': 0.0, 'pos_f_conc': 2.5,
+        
+        'maps_url_cp': '', 'comune_cp': '',
+        'larghezza_carport': 10.0, 'passo_telai_carport': 5.0, 'num_campate_carport': 5,
+        'g1_carport': 0.15, 'g2_carport': 0.20, 'neve_cp_man': 0.0, 'vento_cp_man': 0.0
+    }
+    
+    keys_to_clear = []
+    for k in st.session_state.keys():
+        if modulo == "principale" and (k.endswith('_ui') or k in ['dati_ultimi', 'testo_commerciale', 'carico_aggiuntivo', 'h_ostacolo_neve']): keys_to_clear.append(k)
+        elif modulo == "xlam" and ('xlam' in k): keys_to_clear.append(k)
+        elif modulo == "travi" and ('tr' in k or 'man' in k or 'travi' in k): keys_to_clear.append(k)
+        elif modulo == "carport" and ('cp' in k or 'carport' in k): keys_to_clear.append(k)
+        elif modulo == "tutto": keys_to_clear.append(k)
+
+    for k in keys_to_clear:
+        if k in defaults:
+            st.session_state[k] = defaults[k]
+        else:
+            del st.session_state[k]
+            
+    st.rerun()
+
 # --- GESTIONE SALVATAGGIO PROGETTI (FILE LOCALI) ---
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -25,7 +59,6 @@ class NpEncoder(json.JSONEncoder):
 def genera_json_progetto():
     stato_da_salvare = {}
     for key, value in st.session_state.items():
-        # Escludiamo i file uploader e i dataframe temporanei per evitare crash
         if key in ["xlam_g2_editor", "geo_file_cp", "carica_progetto_file"]:
             continue
         if isinstance(value, pd.DataFrame):
@@ -46,8 +79,6 @@ def applica_json_progetto(json_string):
         else:
             st.session_state[key] = value
 
-
-# --- FUNZIONE ROBUSTA PER ESTRARRE COORDINATE E NOME LUOGO DA URL DI GOOGLE MAPS ---
 def estrai_dati_da_url_maps(url):
     url = url.strip()
     lat_def, lon_def = 46.4983, 11.3548
@@ -124,7 +155,6 @@ def estrai_dati_da_url_maps(url):
             
     return lat_def, lon_def, nome_luogo_estratto
 
-# --- FUNZIONE ESTREZIONE GEOLOGICA DA PDF ---
 def estrai_portanza_da_pdf(file_upload):
     try:
         pdf_reader = PyPDF2.PdfReader(file_upload)
@@ -148,9 +178,20 @@ def estrai_portanza_da_pdf(file_upload):
         pass
     return None
 
-# --- MOTORE DI CALCOLO STRUTTURALE DETERMINISTICO NTC 2018 ---
 def estrai_parametri_ntc_da_coordinate_e_comune(lat, lon, comune_input=""):
     comune_pulito = comune_input.strip().lower()
+    
+    # MODIFICA: Se l'utente non ha usato Maps ma ha inserito manualmente il comune, si valuta prima il testo per assegnare latitudine fittizia
+    is_default = (abs(lat - 46.4983) < 0.001 and abs(lon - 11.3548) < 0.001)
+    if is_default and comune_pulito:
+        if any(x in comune_pulito for x in ["pantelleria", "lampedusa", "linosa", "sardegna", "cagliari", "sassari", "nuoro", "oristano", "sicilia", "palermo", "catania", "messina", "trapani", "siracusa", "agrigento", "enna", "ragusa", "caltanissetta", "calabria", "reggio", "catanzaro", "cosenza", "crotone", "vibo", "puglia", "bari", "lecce", "taranto", "brindisi", "foggia", "campania", "napoli", "salerno", "caserta", "avellino", "benevento", "basilicata", "potenza", "matera"]):
+            lat = 39.0
+        elif any(x in comune_pulito for x in ["roma", "lazio", "frosinone", "latina", "rieti", "viterbo", "abruzzo", "laquila", "pescara", "chieti", "teramo", "molise", "campobasso", "isernia", "umbria", "perugia", "terni", "marche", "ancona", "pesaro", "macerata", "ascoli", "fermo", "toscana", "firenze", "siena", "pisa", "arezzo", "grosseto", "livorno", "lucca", "massa", "pistoia", "prato"]):
+            lat = 42.5
+        elif any(x in comune_pulito for x in ["emilia", "bologna", "modena", "parma", "reggio", "ravenna", "ferrara", "forli", "rimini", "piacenza", "liguria", "genova", "savona", "spezia", "imperia", "piemonte", "torino", "cuneo", "asti", "alessandria", "novara", "vercelli", "biella", "lombardia", "milano", "brescia", "bergamo", "como", "lecco", "varese", "monza", "pavia", "cremona", "mantova", "lodi", "sondrio", "veneto", "venezia", "verona", "padova", "vicenza", "treviso", "rovigo", "belluno", "friuli", "trieste", "udine", "pordenone", "gorizia"]):
+            lat = 45.0
+        else:
+            lat = 46.5
     
     if "pantelleria" in comune_pulito or (36.7 <= lat <= 37.0 and 11.8 <= lon <= 12.1):
         altitudine_stimata = 50.0  
@@ -963,7 +1004,6 @@ pannelli_xlam_db = [
     {"nome": "CLT 320 C8s", "spessore": 320, "strati": [40, 40, 40, 40, 40, 40, 40, 40], "orientamento": [1, 0, 1, 0, 0, 1, 0, 1]}
 ]
 
-# --- FUNZIONE GENERAZIONE WORD PER SOLAI XLAM ---
 def genera_word_xlam(dati):
     try:
         doc = Document('Carta Intestata.docx')
@@ -1050,7 +1090,6 @@ def genera_word_carport(dati):
     file_stream.seek(0)
     return file_stream
 
-# --- FUNZIONI CARPORT AGGIORNATE CON PLINTI CIABATTA+DADO ---
 def esegui_calcolo_carport(dati):
     w = dati['larghezza']
     pt = dati['passo_telai']
@@ -1125,7 +1164,6 @@ def esegui_calcolo_carport(dati):
     kg_nodo_top = round(25.0 + M_trave * 0.15, 1)
     kg_nodo_base = round(35.0 + M_col * 0.25 + N_col * 0.05, 1)
 
-    # --- Nuovo Dimensionamento Plinto di fondazione (Ciabatta + Dado) ---
     B_dado = 0.60  
     H_dado = 0.50  
     B_pl = 0.8     
@@ -1221,7 +1259,6 @@ def genera_modello_3d_carport(dati):
             fig.add_trace(go.Scatter3d(x=[x_col, x_col], y=[y, y], z=[0, z_col], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna'))
             fig.add_trace(go.Scatter3d(x=[x_col, w], y=[y, y], z=[z_col, h_first], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Mensola'))
 
-    # --- Generazione grafica 3D dei plinti (Sotto la quota 0) ---
     B_pl = dati.get('B_pl', 1.0)
     H_pad = dati.get('H_pad', 0.4)
     B_dado = dati.get('B_dado', 0.6)
@@ -1230,7 +1267,6 @@ def genera_modello_3d_carport(dati):
     for idx, (xc, yc) in enumerate(col_positions):
         show_leg_pl = (idx == 0)
         
-        # Facce del DADO (Wireframe)
         hd = B_dado / 2.0
         z_top_dado = 0
         z_bot_dado = -H_dado
@@ -1239,7 +1275,6 @@ def genera_modello_3d_carport(dati):
         for dx, dy in [(-hd, -hd), (hd, -hd), (hd, hd), (-hd, hd)]:
             fig.add_trace(go.Scatter3d(x=[xc+dx, xc+dx], y=[yc+dy, yc+dy], z=[z_bot_dado, z_top_dado], mode='lines', line=dict(color='gray', width=4), showlegend=False))
 
-        # Facce della CIABATTA (Wireframe)
         hp = B_pl / 2.0
         z_top_pad = -H_dado
         z_bot_pad = -H_dado - H_pad
@@ -1297,7 +1332,6 @@ st.title("Generatore Offerte Tecniche e Dimensionamento IA 🏗️")
 with st.sidebar:
     st.header("💾 Gestione Progetto")
     
-    # Download (Esporta)
     json_progetto = genera_json_progetto()
     st.download_button(
         label="💾 Scarica File di Progetto (.json)",
@@ -1309,7 +1343,6 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Upload (Importa)
     file_progetto = st.file_uploader("📂 Carica un progetto salvato (.json)", type=["json"], key="carica_progetto_file")
     if file_progetto is not None:
         if st.button("🔄 Ripristina Progetto", use_container_width=True):
@@ -1333,9 +1366,8 @@ with st.sidebar:
         st.info("🤖 Modalità Ibrida con IA attiva")
 
     st.markdown("---")
-    if st.button("🔄 Nuovo Progetto / Reset", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+    if st.button("🔄 Nuovo Progetto / Reset Totale", use_container_width=True):
+        azzera_dati("tutto")
 
 
 tab_principale, tab_xlam, tab_travi, tab_carport = st.tabs(["🏗️ Struttura Principale Capannone", "🪵 Dimensionamento Solaio XLAM", "📏 Dimensionamento Travi", "🚗 Dimensionamento Carport"])
@@ -1448,7 +1480,14 @@ with tab_principale:
     with col_f2:
         classe_servizio_ui = st.selectbox("Classe di Servizio (Legno EN 1995-1-1)", ["Classe 1 (Interno asciutto)", "Classe 2 (Umidità < 85%)", "Classe 3 (Esterno esposto)"], index=1, key="classe_servizio_ui")
 
-    if st.button("Esegui Dimensionamento, Logistica e Genera Modello 3D", type="primary"):
+    col_btn_run, col_btn_reset = st.columns([4, 1])
+    with col_btn_run:
+        btn_calc_principale = st.button("Esegui Dimensionamento, Logistica e Genera Modello 3D", type="primary")
+    with col_btn_reset:
+        if st.button("🔄 Reset Modulo", use_container_width=True, key="reset_main_btn"):
+            azzera_dati("principale")
+            
+    if btn_calc_principale:
         if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or altezza_colmo_ui <= 0:
             st.warning("⚠️ Inserisci tutte le dimensioni geometriche con valori superiori a zero prima di eseguire il calcolo.")
         else:
@@ -1711,7 +1750,7 @@ with tab_xlam:
     
     col_x1, col_x2 = st.columns(2)
     with col_x1:
-        luce_xlam_ui = st.number_input("Luce di calcolo del solaio (m)", min_value=1.0, value=5.0, step=0.1)
+        luce_xlam_ui = st.number_input("Luce di calcolo del solaio (m)", min_value=1.0, value=5.0, step=0.1, key="luce_xlam_ui")
     
     st.markdown("#### Pesi Permanenti Portati (G2)")
     if 'carichi_g2_xlam' not in st.session_state:
@@ -1725,9 +1764,9 @@ with tab_xlam:
     st.markdown("#### Sovraccarichi Variabili (Lascia 0.0 sul Neve per calcolo automatico da Maps)")
     col_qx1, col_qx2 = st.columns(2)
     with col_qx1:
-        q_k_xlam = st.number_input("Sovraccarico Accidentale - Qk (kN/m²)", min_value=0.0, value=2.0, step=0.5)
+        q_k_xlam = st.number_input("Sovraccarico Accidentale - Qk (kN/m²)", min_value=0.0, value=2.0, step=0.5, key="q_k_xlam")
     with col_qx2:
-        qs_k_xlam = st.number_input("Carico Neve al suolo - qsk manuale (kN/m²)", min_value=0.0, value=0.0, step=0.1)
+        qs_k_xlam = st.number_input("Carico Neve al suolo - qsk manuale (kN/m²)", min_value=0.0, value=0.0, step=0.1, key="qs_k_xlam")
 
     st.markdown("#### ❄️ Accumulo Neve (Copertura - NTC 2018)")
     accumulo_xlam_attivo = st.checkbox("Considera Accumulo Neve", key="chk_acc_xlam")
@@ -1741,16 +1780,23 @@ with tab_xlam:
     st.markdown("#### Stati limite di esercizio (SLE) - Limiti di Freccia")
     col_sl1, col_sl2, col_sl3 = st.columns(3)
     with col_sl1:
-        limite_w_inst_ui = st.number_input("Valore limite w_inst (L / ...)", min_value=100, value=300, step=10)
+        limite_w_inst_ui = st.number_input("Valore limite w_inst (L / ...)", min_value=100, value=300, step=10, key="limite_w_inst_ui")
     with col_sl2:
-        limite_w_netfin_ui = st.number_input("Valore limite w_net,fin (L / ...)", min_value=100, value=300, step=10)
+        limite_w_netfin_ui = st.number_input("Valore limite w_net,fin (L / ...)", min_value=100, value=300, step=10, key="limite_w_netfin_ui")
     with col_sl3:
-        limite_w_fin_ui = st.number_input("Valore limite w_fin (L / ...)", min_value=100, value=250, step=10)
+        limite_w_fin_ui = st.number_input("Valore limite w_fin (L / ...)", min_value=100, value=250, step=10, key="limite_w_fin_ui")
 
     st.markdown("#### Resistenza al Fuoco")
     classe_fuoco_xlam = st.selectbox("Requisito Antincendio (carbonizzazione all'intradosso)", ["R 0", "R 30", "R 60", "R 90"], key="xlam_fuoco")
 
-    if st.button("Dimensiona Solaio XLAM", type="primary"):
+    col_btn_xlam_run, col_btn_xlam_reset = st.columns([4, 1])
+    with col_btn_xlam_run:
+        btn_calc_xlam = st.button("Dimensiona Solaio XLAM", type="primary")
+    with col_btn_xlam_reset:
+        if st.button("🔄 Reset Modulo", use_container_width=True, key="reset_xlam_btn"):
+            azzera_dati("xlam")
+
+    if btn_calc_xlam:
         lat_xlam, lon_xlam, place_xlam = estrai_dati_da_url_maps(maps_url_xlam)
         comune_finale_xlam = comune_xlam if comune_xlam else place_xlam
         luogo_str_xlam, qsk_xlam, zona_vento_xlam, press_vento_str_xlam, zona_sismica_xlam, alt_xlam = estrai_parametri_ntc_da_coordinate_e_comune(lat_xlam, lon_xlam, comune_finale_xlam)
@@ -1906,13 +1952,13 @@ with tab_travi:
     st.markdown("### 🧱 1. Materiale e Proprietà")
     col_mat1, col_mat2 = st.columns(2)
     with col_mat1:
-        mat_trave = st.radio("Materiale della Trave", ["Acciaio", "Legno Lamellare"])
+        mat_trave = st.radio("Materiale della Trave", ["Acciaio", "Legno Lamellare"], key="mat_trave_ui")
     with col_mat2:
         if mat_trave == "Acciaio":
-            grado_acciaio = st.radio("Grado Acciaio", ["S275", "S355"])
+            grado_acciaio = st.radio("Grado Acciaio", ["S275", "S355"], key="grado_acc_ui")
         else:
-            classe_legno = st.selectbox("Classe Legno Lamellare", ["GL24h", "GL28h", "GL30h", "GL32h"])
-            essenza_legno = st.radio("Essenza", ["Abete", "Larice"])
+            classe_legno = st.selectbox("Classe Legno Lamellare", ["GL24h", "GL28h", "GL30h", "GL32h"], key="classe_legno_ui")
+            essenza_legno = st.radio("Essenza", ["Abete", "Larice"], key="essenza_legno_ui")
             
     col_geom1, col_geom2 = st.columns(2)
     with col_geom1:
@@ -1920,7 +1966,7 @@ with tab_travi:
     
     st.markdown("---")
     st.markdown("### 📥 2. Carichi Uniformemente Distribuiti (q)")
-    usa_xlam = st.checkbox("Importa reazione di appoggio dal modulo Solai XLAM", value=False)
+    usa_xlam = st.checkbox("Importa reazione di appoggio dal modulo Solai XLAM", value=False, key="usa_xlam_ui")
     q_xlam_lineare = 0.0
     if usa_xlam:
         if 'xlam_ultimi' in st.session_state:
@@ -1934,11 +1980,11 @@ with tab_travi:
     
     st.markdown("---")
     st.markdown("### 🎯 3. Carichi Concentrati (F)")
-    usa_storico = st.checkbox("Importa reazione da una Trave precedentemente calcolata (es. orditura secondaria)", value=False)
+    usa_storico = st.checkbox("Importa reazione da una Trave precedentemente calcolata (es. orditura secondaria)", value=False, key="usa_storico_ui")
     f_conc_storico = 0.0
     if usa_storico:
         if 'travi_storico' in st.session_state and len(st.session_state['travi_storico']) > 0:
-            trave_sel = st.selectbox("Seleziona la trave da far scaricare su questa", [t['nome'] for t in st.session_state['travi_storico']])
+            trave_sel = st.selectbox("Seleziona la trave da far scaricare su questa", [t['nome'] for t in st.session_state['travi_storico']], key="trave_sel_ui")
             for t in st.session_state['travi_storico']:
                 if t['nome'] == trave_sel:
                     f_conc_storico = t['reazione_max']
@@ -1951,9 +1997,16 @@ with tab_travi:
         f_conc_man = st.number_input("Aggiungi carico concentrato manuale F (kN)", min_value=0.0, value=0.0, step=1.0, key="f_conc_man")
         f_tot_conc = f_conc_storico + f_conc_man
     with col_c2:
-        pos_f_conc = st.number_input("Distanza di applicazione del carico F dall'appoggio A (m)", min_value=0.0, max_value=luce_trave, value=luce_trave/2, step=0.1)
+        pos_f_conc = st.number_input("Distanza di applicazione del carico F dall'appoggio A (m)", min_value=0.0, max_value=luce_trave, value=luce_trave/2, step=0.1, key="pos_f_conc")
 
-    if st.button("Dimensiona Trave e Salva in Storico", type="primary"):
+    col_btn_tr_run, col_btn_tr_reset = st.columns([4, 1])
+    with col_btn_tr_run:
+        btn_calc_travi = st.button("Dimensiona Trave e Salva in Storico", type="primary")
+    with col_btn_tr_reset:
+        if st.button("🔄 Reset Modulo", use_container_width=True, key="reset_travi_btn"):
+            azzera_dati("travi")
+
+    if btn_calc_travi:
         a = pos_f_conc
         b = luce_trave - pos_f_conc
         
@@ -2032,22 +2085,22 @@ with tab_carport:
 
     col_g_c1, col_g_c2, col_g_c3 = st.columns(3)
     with col_g_c1:
-        larghezza_carport = st.number_input("Larghezza Trasversale (m)", value=mod_data["b_std"] if mod_data["b_std"] > 0 else 10.0, step=0.1)
+        larghezza_carport = st.number_input("Larghezza Trasversale (m)", value=mod_data["b_std"] if mod_data["b_std"] > 0 else 10.0, step=0.1, key="larghezza_carport")
     with col_g_c2:
-        passo_telai_carport = st.number_input("Passo Telai (m)", value=5.0, step=0.1) 
+        passo_telai_carport = st.number_input("Passo Telai (m)", value=5.0, step=0.1, key="passo_telai_carport") 
     with col_g_c3:
-        num_campate_carport = st.number_input("Numero Campate (Lunghezza)", value=5, min_value=1, step=1)
+        num_campate_carport = st.number_input("Numero Campate (Lunghezza)", value=5, min_value=1, step=1, key="num_campate_carport")
     
     st.markdown("#### Logica Carichi e Azioni Esterne (Lascia 0.0 su Neve/Vento per calcolo automatico da Maps)")
     col_cc1, col_cc2, col_cc3, col_cc4 = st.columns(4)
     with col_cc1:
-        g1_carport = st.number_input("G1 - Struttura (kN/m²)", min_value=0.10, value=0.15, step=0.05)
+        g1_carport = st.number_input("G1 - Struttura (kN/m²)", min_value=0.10, value=0.15, step=0.05, key="g1_carport")
     with col_cc2:
-        g2_carport = st.number_input("G2 - Pannelli Solari ecc. (kN/m²)", min_value=0.0, value=0.20, step=0.05)
+        g2_carport = st.number_input("G2 - Pannelli Solari ecc. (kN/m²)", min_value=0.0, value=0.20, step=0.05, key="g2_carport")
     with col_cc3:
-        neve_carport = st.number_input("Neve qsk manuale (kN/m²)", min_value=0.0, value=0.0, step=0.10)
+        neve_carport = st.number_input("Neve qsk manuale (kN/m²)", min_value=0.0, value=0.0, step=0.10, key="neve_cp_man")
     with col_cc4:
-        vento_carport = st.number_input("Vento base manuale (kN/m²)", min_value=0.0, value=0.0, step=0.10)
+        vento_carport = st.number_input("Vento base manuale (kN/m²)", min_value=0.0, value=0.0, step=0.10, key="vento_cp_man")
 
     st.markdown("### 🌍 Dati Geotecnici e Fondazioni")
     geo_file = st.file_uploader("📂 Carica Relazione Geologica (.pdf) per estrarre la portanza (Opzionale)", type=["pdf"], key="geo_file_cp")
@@ -2057,9 +2110,16 @@ with tab_carport:
         "Medio (Sabbie, Argille normali) ~ 1.5 daN/cm²",
         "Buono (Ghiaie, Sabbie dense) ~ 3.0 daN/cm²",
         "Ottimo (Roccia) ~ 5.0 daN/cm²"
-    ], index=1)
+    ], index=1, key="tipo_terreno_ui")
 
-    if st.button("Calcola Carico, Dimensiona Strutture e Genera Modello 3D", type="primary"):
+    col_btn_cp_run, col_btn_cp_reset = st.columns([4, 1])
+    with col_btn_cp_run:
+        btn_calc_carport = st.button("Calcola Carico, Dimensiona Strutture e Genera Modello 3D", type="primary")
+    with col_btn_cp_reset:
+        if st.button("🔄 Reset Modulo", use_container_width=True, key="reset_cp_btn"):
+            azzera_dati("carport")
+
+    if btn_calc_carport:
         lat_cp, lon_cp, place_cp = estrai_dati_da_url_maps(maps_url_cp)
         comune_finale_cp = comune_cp if comune_cp else place_cp
         luogo_str_cp, qsk_cp, zona_vento_cp, press_vento_str_cp, zona_sismica_cp, alt_cp = estrai_parametri_ntc_da_coordinate_e_comune(lat_cp, lon_cp, comune_finale_cp)
