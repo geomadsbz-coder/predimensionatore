@@ -16,7 +16,7 @@ import pandas as pd
 
 # --- FUNZIONE GLOBALE DI RESET DATI TRAMITE CALLBACK ---
 def azzera_dati(modulo="tutto"):
-    # Definisci i valori di default esatti per ogni widget standard
+    # Definisci i valori de default esatti per ogni widget standard
     defaults_principale = {
         'maps_url_ui': "", 'comune_cantiere_ui': "", 'lunghezza_edificio_ui': 25.0,
         'interasse_portali_ui': 5.0, 'luce_totale_ui': 39.6, 'altezza_gronda_ui': 9.0,
@@ -96,14 +96,12 @@ class NpEncoder(json.JSONEncoder):
 
 def genera_json_progetto():
     stato_da_salvare = {}
-    # Lista delle chiavi (widget non assegnabili) da escludere rigorosamente dal salvataggio
     chiavi_vietate = [
         "xlam_g2_editor", "geo_file_cp", "carica_progetto_file", "file_cad_pdf",
         "reset_main_btn", "reset_xlam_btn", "reset_travi_btn", "reset_cp_btn"
     ]
     
     for key, value in st.session_state.items():
-        # Ignora le chiavi dei bottoni e dei file uploader
         if any(vietata in key for vietata in chiavi_vietate):
             continue
             
@@ -119,7 +117,6 @@ def genera_json_progetto():
 
 def applica_json_progetto(json_string):
     dati_progetto = json.loads(json_string)
-    # Filtro di sicurezza anche in fase di caricamento
     chiavi_vietate = [
         "xlam_g2_editor", "geo_file_cp", "carica_progetto_file", "file_cad_pdf",
         "reset_main_btn", "reset_xlam_btn", "reset_travi_btn", "reset_cp_btn"
@@ -1121,11 +1118,12 @@ def genera_word_carport(dati):
     doc.add_paragraph(f"Carico Totale Equivalente (SLU): {dati.get('q_tot', 0.0):.2f} kN/m² ({dati.get('kg_mq', 0.0):.1f} kg/m²)")
 
     doc.add_heading('3. Dimensionamento Elementi Strutturali', level=1)
-    doc.add_paragraph(f"Trave di Falda: {dati.get('sez_trave', 'N.D.')} (M_ed = {dati.get('M_trave', 0.0):.1f} kNm)")
-    doc.add_paragraph(f"Colonna Portante: {dati.get('sez_col', 'N.D.')}")
-    doc.add_paragraph(f"Arcarecci di Copertura: {dati.get('sez_arc', 'N.D.')} (Interasse max: {dati.get('passo_arc', 0.0):.2f} m)")
-    doc.add_paragraph(f"Controventi di Copertura: {dati.get('cv_falda', 'N.D.')}")
-    doc.add_paragraph(f"Controventi Verticali: {dati.get('cv_vert', 'N.D.')}")
+    doc.add_paragraph(f"Trave di Falda: {dati.get('sez_trave', 'N.D.')} (L = {dati.get('L_trave', 0.0):.2f} m | M_ed = {dati.get('M_trave', 0.0):.1f} kNm)")
+    doc.add_paragraph(f"Colonna Portante: {dati.get('sez_col', 'N.D.')} (L = {dati.get('L_col', 0.0):.2f} m)")
+    doc.add_paragraph(f"Arcarecci di Copertura: {dati.get('sez_arc', 'N.D.')} (L = {dati.get('L_arcareccio', 0.0):.2f} m | Interasse max: {dati.get('passo_arc', 0.0):.2f} m)")
+    doc.add_paragraph(f"Controventi di Copertura: {dati.get('cv_falda', 'N.D.')} (L diag = {dati.get('L_diag_falda', 0.0):.2f} m)")
+    cv_v_len = f" (L diag = {dati.get('L_diag_vert', 0.0):.2f} m)" if dati.get('L_diag_vert', 0.0) > 0 else ""
+    doc.add_paragraph(f"Controventi Verticali: {dati.get('cv_vert', 'N.D.')}{cv_v_len}")
 
     doc.add_heading('4. Reazioni Vincolari, Connessioni e Fondazioni', level=1)
     doc.add_paragraph(f"Reazioni di base (SLU): N = {dati.get('N_base', 0.0):.1f} kN | V = {dati.get('V_base', 0.0):.1f} kN | M = {dati.get('M_base', 0.0):.1f} kNm")
@@ -1256,6 +1254,28 @@ def esegui_calcolo_carport(dati):
     
     mq_acciaio_totale = round((ml_colonne_tot + ml_travi_tot + ml_arcarecci_tot) * 0.8, 1)
 
+    h_tr_eff = dati.get('h_trauf', 2.4)
+    h_fr_eff = dati.get('h_first', 3.0)
+    
+    if "Y" in forma:
+        L_col = h_tr_eff
+        L_cantilever = math.sqrt((w / 2.0)**2 + (h_fr_eff - h_tr_eff)**2)
+        L_trave_tot = L_cantilever * 2
+        L_diag_falda = math.sqrt((w / 2.0)**2 + pt**2 + (h_fr_eff - h_tr_eff)**2)
+        L_diag_vert = 0.0
+    elif "fallend" in forma:
+        L_col = h_fr_eff
+        L_trave_tot = math.sqrt(w**2 + (h_fr_eff - h_tr_eff)**2)
+        L_diag_falda = math.sqrt(w**2 + pt**2 + (h_fr_eff - h_tr_eff)**2)
+        L_diag_vert = math.sqrt(pt**2 + L_col**2)
+    else:
+        L_col = h_tr_eff
+        L_trave_tot = math.sqrt(w**2 + (h_fr_eff - h_tr_eff)**2)
+        L_diag_falda = math.sqrt(w**2 + pt**2 + (h_fr_eff - h_tr_eff)**2)
+        L_diag_vert = math.sqrt(pt**2 + L_col**2)
+
+    L_arcareccio = pt
+
     return {
         "passo_arc": round(passo_arc, 2),
         "sez_arc": sez_arc,
@@ -1275,7 +1295,12 @@ def esegui_calcolo_carport(dati):
         "vol_plinto": vol_plinto,
         "kg_armatura": kg_armatura,
         "B_pl": round(B_pl, 2), "H_pad": round(H_pad, 2),
-        "B_dado": round(B_dado, 2), "H_dado": round(H_dado, 2)
+        "B_dado": round(B_dado, 2), "H_dado": round(H_dado, 2),
+        "L_col": round(L_col, 2),
+        "L_trave": round(L_trave_tot, 2),
+        "L_arcareccio": round(L_arcareccio, 2),
+        "L_diag_falda": round(L_diag_falda, 2),
+        "L_diag_vert": round(L_diag_vert, 2)
     }
 
 def genera_modello_3d_carport(dati):
@@ -1337,7 +1362,6 @@ def genera_modello_3d_carport(dati):
         for dx, dy in [(-hp, -hp), (hp, -hp), (hp, hp), (-hp, hp)]:
             fig.add_trace(go.Scatter3d(x=[xc+dx, xc+dx], y=[yc+dy, yc+dy], z=[z_bot_pad, z_top_pad], mode='lines', line=dict(color='darkgray', width=4), showlegend=False))
 
-
     passo_arc = dati['passo_arc']
     n_arc = max(1, int(w / passo_arc))
     for i in range(n_arc + 1):
@@ -1351,10 +1375,16 @@ def genera_modello_3d_carport(dati):
             
         fig.add_trace(go.Scatter3d(x=[x_arc, x_arc], y=[0, lunghezza_totale], z=[z_arc, z_arc], mode='lines', line=dict(color='gray', width=3, dash='dot'), showlegend=(i==0), name='Arcarecci'))
 
-    for idx in [0, nc - 1]:
+    campate_cv = list(set([0, nc - 1]))
+    for idx in campate_cv:
         y1, y2 = y_telai[idx], y_telai[idx + 1]
-        for i in range(n_arc):
-            xa, xb = i * passo_arc, (i+1) * passo_arc
+        
+        if "Y-Doppelcarport" in forma:
+            pitches = [(0.0, w/2.0), (w/2.0, w)]
+        else:
+            pitches = [(0.0, w)]
+            
+        for p_idx, (xa, xb) in enumerate(pitches):
             if "Y-Doppelcarport" in forma:
                 za = h_first - ((h_first - h_trauf) * (xa / (w/2.0))) if xa <= w/2.0 else h_trauf + ((h_first - h_trauf) * ((xa - w/2.0) / (w/2.0)))
                 zb = h_first - ((h_first - h_trauf) * (xb / (w/2.0))) if xb <= w/2.0 else h_trauf + ((h_first - h_trauf) * ((xb - w/2.0) / (w/2.0)))
@@ -1365,11 +1395,12 @@ def genera_modello_3d_carport(dati):
                 za = h_trauf + ((h_first - h_trauf) * (xa / w))
                 zb = h_trauf + ((h_first - h_trauf) * (xb / w))
             
-            fig.add_trace(go.Scatter3d(x=[xa, xb, None, xa, xb], y=[y1, y2, None, y2, y1], z=[za, zb, None, za, zb], mode='lines', line=dict(color='forestgreen', width=3), showlegend=(idx==0 and i==0), name='Controventi Falda'))
+            show_leg_cv = (idx == campate_cv[0] and p_idx == 0)
+            fig.add_trace(go.Scatter3d(x=[xa, xb, None, xa, xb], y=[y1, y2, None, y2, y1], z=[za, zb, None, za, zb], mode='lines', line=dict(color='forestgreen', width=3), showlegend=show_leg_cv, name='Controventi Falda'))
         
         if not "Y" in forma:
             z_col_top = h_first if "fallend" in forma else h_trauf
-            fig.add_trace(go.Scatter3d(x=[0, 0, None, 0, 0], y=[y1, y2, None, y2, y1], z=[0, z_col_top, None, z_col_top, 0], mode='lines', line=dict(color='darkorange', width=4), showlegend=(idx==0), name='Controventi Verticali'))
+            fig.add_trace(go.Scatter3d(x=[0, 0, None, 0, 0], y=[y1, y2, None, y2, y1], z=[0, z_col_top, None, z_col_top, 0], mode='lines', line=dict(color='darkorange', width=4), showlegend=(idx == campate_cv[0]), name='Controventi Verticali'))
 
     fig.update_layout(
         title=f"Modello 3D Carport ({nc} Campate - {forma})",
@@ -2231,9 +2262,9 @@ with tab_carport:
         col_dw_c1, col_dw_c2 = st.columns([1, 2])
         with col_dw_c1:
             st.markdown("### Dimensionamento Elementi")
-            st.info(f"**Trave di Falda:** {dati_carport['sez_trave']}\n*(M_ed = {dati_carport['M_trave']} kNm)*")
-            st.info(f"**Colonna Portante:** {dati_carport['sez_col']}")
-            st.info(f"**Arcarecci di Copertura:** {dati_carport['sez_arc']}  \n*(Interasse massimo installazione: {dati_carport['passo_arc']:.2f} m)*")
+            st.info(f"**Trave di Falda:** {dati_carport['sez_trave']}  \n*(L = {dati_carport['L_trave']:.2f} m | M_ed = {dati_carport['M_trave']} kNm)*")
+            st.info(f"**Colonna Portante:** {dati_carport['sez_col']}  \n*(L = {dati_carport['L_col']:.2f} m)*")
+            st.info(f"**Arcarecci di Copertura:** {dati_carport['sez_arc']}  \n*(L modulo = {dati_carport['L_arcareccio']:.2f} m | Interasse max: {dati_carport['passo_arc']:.2f} m)*")
             
             st.markdown("### Connessioni e Reazioni al Piede")
             st.success(f"**Nodo Top (Trave-Colonna):** ~{dati_carport['kg_nodo_top']} kg acciaio")
@@ -2245,8 +2276,9 @@ with tab_carport:
             st.info(f"**Materiali a plinto:** {dati_carport['vol_plinto']} mc Cls | {dati_carport['kg_armatura']} kg armatura")
 
             st.markdown("### Sistemi di Stabilizzazione")
-            st.warning(f"**Copertura:** {dati_carport['cv_falda']}")
-            st.warning(f"**Verticali:** {dati_carport['cv_vert']}")
+            st.warning(f"**Copertura:** {dati_carport['cv_falda']}  \n*(L diagonale teorica = {dati_carport['L_diag_falda']:.2f} m)*")
+            cv_vert_len = f"  \n*(L diagonale teorica = {dati_carport['L_diag_vert']:.2f} m)*" if dati_carport['L_diag_vert'] > 0 else ""
+            st.warning(f"**Verticali:** {dati_carport['cv_vert']}{cv_vert_len}")
 
             st.markdown("### Trattamento Anticorrosione C5")
             st.error(f"**Condizione:** {dati_carport['ciclo_c5']}")
