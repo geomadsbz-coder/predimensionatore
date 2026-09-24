@@ -1005,6 +1005,51 @@ def genera_word_xlam(dati):
     file_stream.seek(0)
     return file_stream
 
+def genera_word_carport(dati):
+    try:
+        doc = Document('Carta Intestata.docx')
+    except Exception:
+        doc = Document()
+    doc.add_heading('Relazione Tecnica di Calcolo - Struttura Carport (NTC 2018)', 0)
+
+    doc.add_heading('1. Dati Generali e Geometrici', level=1)
+    doc.add_paragraph(f"Località / Comune: {dati.get('luogo', 'N.D.')}")
+    doc.add_paragraph(f"Modello: {dati.get('modello', 'N.D.')} | Tipologia: {dati.get('tipo', 'N.D.')} | Forma: {dati.get('forma', 'N.D.')}")
+    doc.add_paragraph(f"Larghezza Trasversale: {dati.get('larghezza', 0.0):.2f} m")
+    doc.add_paragraph(f"Passo Telai: {dati.get('passo_telai', 0.0):.2f} m | Numero Campate: {dati.get('num_campate', 0)} | Lunghezza Totale: {dati.get('lunghezza_totale', 0.0):.2f} m")
+    doc.add_paragraph(f"Altezza di Gronda (H_trauf): {dati.get('h_trauf', 0.0):.2f} m | Altezza di Colmo (H_first): {dati.get('h_first', 0.0):.2f} m")
+
+    doc.add_heading('2. Parametri Climatici e Carichi', level=1)
+    doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')}")
+    doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione Vento Base: {dati.get('pressione_vento', 'N.D.')} | Calcolo (qp): {dati.get('vento', 0.0):.2f} kN/m²")
+    doc.add_paragraph(f"Carico Neve al Suolo (qsk): {dati.get('neve_qsk', 0.0):.2f} kN/m² | Neve di calcolo (qs): {dati.get('neve', 0.0):.2f} kN/m²")
+    doc.add_paragraph(f"Pesi Permanenti: Struttura (G1) {dati.get('g1', 0.0):.2f} kN/m² | Impianti/Pannelli (G2) {dati.get('g2', 0.0):.2f} kN/m²")
+    doc.add_paragraph(f"Carico Totale Equivalente (SLU): {dati.get('q_tot', 0.0):.2f} kN/m² ({dati.get('kg_mq', 0.0):.1f} kg/m²)")
+
+    doc.add_heading('3. Dimensionamento Elementi Strutturali', level=1)
+    doc.add_paragraph(f"Trave di Falda: {dati.get('sez_trave', 'N.D.')} (M_ed = {dati.get('M_trave', 0.0):.1f} kNm)")
+    doc.add_paragraph(f"Colonna Portante: {dati.get('sez_col', 'N.D.')}")
+    doc.add_paragraph(f"Arcarecci di Copertura: {dati.get('sez_arc', 'N.D.')} (Interasse max: {dati.get('passo_arc', 0.0):.2f} m)")
+    doc.add_paragraph(f"Controventi di Copertura: {dati.get('cv_falda', 'N.D.')}")
+    doc.add_paragraph(f"Controventi Verticali: {dati.get('cv_vert', 'N.D.')}")
+
+    doc.add_heading('4. Reazioni Vincolari, Connessioni e Fondazioni', level=1)
+    doc.add_paragraph(f"Reazioni di base (SLU): N = {dati.get('N_base', 0.0):.1f} kN | V = {dati.get('V_base', 0.0):.1f} kN | M = {dati.get('M_base', 0.0):.1f} kNm")
+    doc.add_paragraph(f"Capacità Portante Terreno: {dati.get('sigma_terreno', 150.0):.1f} kN/m²")
+    doc.add_paragraph(f"Tipologia Plinto: {dati.get('forma_plinto', 'N.D.')}")
+    doc.add_paragraph(f"Dimensioni Plinto: {dati.get('dim_plinto', 'N.D.')}")
+    doc.add_paragraph(f"Materiali Plinto (Stimati): {dati.get('vol_plinto', 0.0):.2f} m³ Cls | {dati.get('kg_armatura', 0.0):.1f} kg Armatura")
+    doc.add_paragraph(f"Peso Nodo Base: ~{dati.get('kg_nodo_base', 0.0):.1f} kg | Peso Nodo Top: ~{dati.get('kg_nodo_top', 0.0):.1f} kg")
+
+    doc.add_heading('5. Durabilità e Trattamenti', level=1)
+    doc.add_paragraph(f"Ciclo Anticorrosione: {dati.get('ciclo_c5', 'N.D.')}")
+    doc.add_paragraph(f"Superficie Acciaio da trattare: {dati.get('mq_acciaio_totale', 0.0):.1f} m²")
+
+    file_stream = io.BytesIO()
+    doc.save(file_stream)
+    file_stream.seek(0)
+    return file_stream
+
 # --- FUNZIONI CARPORT AGGIORNATE CON PLINTI CIABATTA+DADO ---
 def esegui_calcolo_carport(dati):
     w = dati['larghezza']
