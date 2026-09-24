@@ -146,6 +146,31 @@ def estrai_dati_da_url_maps(url):
             
     return lat_def, lon_def, nome_luogo_estratto
 
+# --- FUNZIONE ESTREZIONE GEOLOGICA DA PDF ---
+def estrai_portanza_da_pdf(file_upload):
+    try:
+        pdf_reader = PyPDF2.PdfReader(file_upload)
+        testo = ""
+        for page in pdf_reader.pages:
+            if page.extract_text():
+                testo += page.extract_text() + "\n"
+        
+        # Cerca diciture come "portanza = 1.5 kg/cm2", "sigma = 1,5 daN/cm2", "tensione ammissibile 150 kN/m2"
+        pattern = r'(?i)(portanza|tensione ammissibile|capacit[aà] portante|sigma_adm|sigma ammissibile|resistenza terreno|carico ammissibile)[\s:=]*([0-9]+[.,]?[0-9]*)[\s]*(daN/cm2|kg/cm2|kN/m2|MPa)'
+        match = re.search(pattern, testo)
+        if match:
+            valore = float(match.group(2).replace(',', '.'))
+            unita = match.group(3).lower()
+            if unita in ['dan/cm2', 'kg/cm2']:
+                return valore * 100.0  # da daN/cm2 a kN/m2
+            elif unita == 'mpa':
+                return valore * 1000.0
+            elif unita == 'kn/m2':
+                return valore
+    except Exception:
+        pass
+    return None
+
 # --- MOTORE DI CALCOLO STRUTTURALE DETERMINISTICO NTC 2018 ---
 def estrai_parametri_ntc_da_coordinate_e_comune(lat, lon, comune_input=""):
     comune_pulito = comune_input.strip().lower()
@@ -1004,7 +1029,7 @@ def genera_word_xlam(dati):
     file_stream.seek(0)
     return file_stream
 
-# --- FUNZIONI CARPORT AGGIORNATE CON NTC 2018 E SUPERFICIE C5 ---
+# --- FUNZIONI CARPORT AGGIORNATE CON NODI, PLINTI E GEO-REAZIONI ---
 def esegui_calcolo_carport(dati):
     w = dati['larghezza']
     pt = dati['passo_telai']
@@ -1013,6 +1038,7 @@ def esegui_calcolo_carport(dati):
     tipo = dati['tipo']
     forma = dati['forma']
     vento = dati.get('vento', 0.0)
+    sigma_terreno_kn = dati.get('sigma_terreno', 150.0) # Parametro terreno in kN/m2
     
     passo_arc_max = 1.2 if "Acciaio" in tipo else 1.5
     n_arc = math.ceil(w / passo_arc_max)
@@ -1024,12 +1050,11 @@ def esegui_calcolo_carport(dati):
         elif M_arc < 10: sez_arc = "Profilo a Z pressopiegato 150x2.5 mm"
         else: sez_arc = "Profilo a Z pressopiegato 200x3.0 mm"
     else: 
-        w_req = (M_arc * 100) / 1.45  # FIX: Corretta unità di misura kN/cm2
+        w_req = (M_arc * 100) / 1.45
         h_req = math.sqrt((6*w_req)/10.0)
         h_arc = max(16, math.ceil(h_req/4)*4)
         sez_arc = f"Legno Lamellare GL24h 10x{int(h_arc)} cm"
 
-    # FIX: Schema statico corretto per le travi in base alla forma
     if "Y" in forma:
         L_cant = w / 2.0
         M_trave = (q_tot * pt * L_cant**2) / 2.0
@@ -1038,7 +1063,6 @@ def esegui_calcolo_carport(dati):
 
     if "Acciaio" in tipo.split('-')[1]:
         w_req_tr = (M_trave * 100) / 27.5
-        # FIX: Scaglioni più fluidi e proporzionati per le IPE/HEA
         if w_req_tr < 150: sez_trave = "IPE 200 / HEA 140"
         elif w_req_tr < 250: sez_trave = "IPE 240 / HEA 180"
         elif w_req_tr < 420: sez_trave = "IPE 300 / HEA 220"
@@ -1047,17 +1071,20 @@ def esegui_calcolo_carport(dati):
         elif w_req_tr < 1500: sez_trave = "IPE 500 / HEA 360"
         else: sez_trave = "IPE 600 / HEB 400"
     else:
-        w_req_tr = (M_trave * 100) / 1.45  # FIX: Corretta unità di misura kN/cm2
+        w_req_tr = (M_trave * 100) / 1.45
         b_tr = 20
         h_req_tr = math.sqrt((6*w_req_tr)/b_tr)
         h_tr = max(24, math.ceil(h_req_tr/4)*4)
         sez_trave = f"BSH GL24h {b_tr}x{int(h_tr)} cm (consigliata a sezione variabile)"
 
-    # FIX: Dimensionamento colonne al momento flettente (vento/sbilanciamento)
     h_media = (dati.get('h_trauf', 2.4) + dati.get('h_first', 3.0)) / 2.0
+    
+    # Reazioni base
     if "Y" in forma:
-        # Colonna singola centrale: assorbe squilibrio carichi + momento vento
-        M_col = (M_trave * 0.60) + (vento * 1.5 * pt * h_media**2 / 2.0)
+        N_col = (q_tot * pt * w)
+        V_col = (vento * 1.5 * pt * h_media)
+        M_col = (M_trave * 0.60) + (V_col * h_media / 2.0)
+        
         w_req_col = (M_col * 100) / 27.5
         if w_req_col < 150: sez_col = "HEB 140 / HEA 160"
         elif w_req_col < 300: sez_col = "HEB 180 / HEA 200"
@@ -1065,21 +1092,40 @@ def esegui_calcolo_carport(dati):
         elif w_req_col < 1000: sez_col = "HEB 280 / HEA 320"
         else: sez_col = "HEB 320 / HEB 360"
     else:
-        # Colonne laterali: assorbono momento vento e compressione ripartita
-        M_col = (vento * 1.5 * pt * h_media**2) / 2.0
         N_col = (q_tot * pt * w) / 2.0
-        # Modulo equivalente empirico (flessione + compressione)
+        V_col = (vento * 1.5 * pt * h_media) / 2.0
+        M_col = V_col * h_media
+        
         w_req_col = (M_col * 100) / 27.5 + (N_col / 2.0) 
         if w_req_col < 80: sez_col = "Tubolare 100x100x4 / HEA 120"
         elif w_req_col < 150: sez_col = "Tubolare 150x150x5 / HEA 140"
         elif w_req_col < 300: sez_col = "HEB 160 / HEA 180"
         else: sez_col = "HEB 200 / HEA 220"
 
+    # Nodi / Connessioni in Kg (Formule empiriche)
+    kg_nodo_top = round(25.0 + M_trave * 0.15, 1)
+    kg_nodo_base = round(35.0 + M_col * 0.25 + N_col * 0.05, 1)
+
+    # Dimensionamento Plinto di fondazione
+    B_pl = 0.8
+    while True:
+        area_pl = B_pl * B_pl
+        W_pl = (B_pl**3) / 6.0
+        N_tot = N_col + (area_pl * 0.8 * 25.0)  # Peso cls approssimato (H~0.8)
+        sigma_max = (N_tot / area_pl) + (M_col / W_pl)
+        if sigma_max <= sigma_terreno_kn or B_pl >= 4.0:
+            break
+        B_pl += 0.1
+
+    H_pl = max(0.6, math.ceil((B_pl / 3)*10)/10)
+    vol_plinto = round(B_pl * B_pl * H_pl, 2)
+    kg_armatura = round(vol_plinto * 80.0, 1)
+
     cv_falda = "Tiranti in acciaio incrociati Ø 16 mm (campate di estremità)"
     cv_vert = "Incastro rigido in fondazione (nessun controvento verticale previsto per viabilità)" if "Y" in forma else "Croci di Sant'Andrea in tubolare 80x80x4 mm o L 80x8 (sulla linea colonne)"
 
     num_telai = nc + 1
-    num_colonne = num_telai * (1 if "Y" in forma else 2) # FIX: Calcolo numero corretto
+    num_colonne = num_telai * (1 if "Y" in forma else 2) 
     h_media_colonna = h_media
     ml_colonne_tot = num_colonne * h_media_colonna
     ml_travi_tot = num_telai * w * 1
@@ -1095,7 +1141,16 @@ def esegui_calcolo_carport(dati):
         "cv_falda": cv_falda,
         "cv_vert": cv_vert,
         "M_trave": round(M_trave, 1),
-        "mq_acciaio_totale": mq_acciaio_totale
+        "mq_acciaio_totale": mq_acciaio_totale,
+        "N_base": round(N_col, 1),
+        "V_base": round(V_col, 1),
+        "M_base": round(M_col, 1),
+        "kg_nodo_top": kg_nodo_top,
+        "kg_nodo_base": kg_nodo_base,
+        "dim_plinto": f"{B_pl:.1f} x {B_pl:.1f} x {H_pl:.1f} m",
+        "forma_plinto": "Quadrato isolato su cls magrone",
+        "vol_plinto": vol_plinto,
+        "kg_armatura": kg_armatura
     }
 
 def genera_modello_3d_carport(dati):
@@ -1209,6 +1264,20 @@ def genera_word_carport(dati):
     doc.add_paragraph(f"Stato Trattamento: {dati['ciclo_c5']}")
     doc.add_paragraph(f"Superficie in acciaio stimata da sottoporre a trattamento protettivo: {dati['mq_acciaio_totale']} mq")
 
+    doc.add_heading('7. Connessioni e Nodi Strutturali', level=1)
+    doc.add_paragraph(f"Nodo Trave-Colonna (Top): ~{dati['kg_nodo_top']} kg (Acciaio S275/S355 + Bulloneria 8.8)")
+    doc.add_paragraph(f"Nodo Colonna-Fondazione (Base): ~{dati['kg_nodo_base']} kg (Piastra di base + Tirafondi)")
+
+    doc.add_heading('8. Reazioni Vincolari e Fondazioni', level=1)
+    doc.add_paragraph(f"Reazioni al piede (SLU per singola colonna):")
+    doc.add_paragraph(f"- Sforzo Normale (N_ed): {dati['N_base']} kN")
+    doc.add_paragraph(f"- Taglio (V_ed): {dati['V_base']} kN")
+    doc.add_paragraph(f"- Momento Flettente (M_ed): {dati['M_base']} kNm")
+    doc.add_paragraph(f"Dimensionamento Plinto di Fondazione (Capacità portante considerata: {dati.get('sigma_terreno', 150.0):.1f} kN/m²):")
+    doc.add_paragraph(f"- Forma e Dimensioni: {dati['forma_plinto']}, {dati['dim_plinto']}")
+    doc.add_paragraph(f"- Volume Calcestruzzo (a plinto): {dati['vol_plinto']} mc")
+    doc.add_paragraph(f"- Armatura Stimata (a plinto): {dati['kg_armatura']} kg")
+
     file_stream = io.BytesIO()
     doc.save(file_stream)
     file_stream.seek(0)
@@ -1263,7 +1332,7 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
-# --- AGGIUNTA SCHEDA TAB TRAVI ---
+
 tab_principale, tab_xlam, tab_travi, tab_carport = st.tabs(["🏗️ Struttura Principale Capannone", "🪵 Dimensionamento Solaio XLAM", "📏 Dimensionamento Travi", "🚗 Dimensionamento Carport"])
 
 with tab_principale:
@@ -1754,7 +1823,6 @@ with tab_xlam:
                 break
                 
         if pannello_idoneo:
-            # --- SALVATAGGIO REAZIONE D'APPOGGIO IN SESSION STATE ---
             reazione_appoggio_xlam = (q_slu * luce_xlam_ui) / 2.0
             
             st.success(f"✅ **Solaio XLAM Ottimizzato Trovato:** {pannello_idoneo['nome']} (Spessore {pannello_idoneo['spessore']} mm)")
@@ -1827,7 +1895,6 @@ with tab_xlam:
             use_container_width=True
         )
 
-# --- NUOVO MODULO TAB TRAVI ---
 with tab_travi:
     st.header("Modulo Dimensionamento Travi (Acciaio e Legno Lamellare)")
     st.markdown("Questo modulo calcola e suggerisce la sezione della trave, permettendo di incrociare i carichi provenienti dal modulo XLAM o da travi secondarie precedentemente dimensionate.")
@@ -1978,21 +2045,43 @@ with tab_carport:
     with col_cc4:
         vento_carport = st.number_input("Vento base manuale (kN/m²)", min_value=0.0, value=0.0, step=0.10)
 
+    st.markdown("### 🌍 Dati Geotecnici e Fondazioni")
+    geo_file = st.file_uploader("📂 Carica Relazione Geologica (.pdf) per estrarre la portanza (Opzionale)", type=["pdf"], key="geo_file_cp")
+    
+    tipo_terreno_ui = st.selectbox("Seleziona Tipo di Terreno (Generico)", [
+        "Scadente (Argille molli, Limo) ~ 0.5 daN/cm²",
+        "Medio (Sabbie, Argille normali) ~ 1.5 daN/cm²",
+        "Buono (Ghiaie, Sabbie dense) ~ 3.0 daN/cm²",
+        "Ottimo (Roccia) ~ 5.0 daN/cm²"
+    ], index=1)
+
     if st.button("Calcola Carico, Dimensiona Strutture e Genera Modello 3D", type="primary"):
         lat_cp, lon_cp, place_cp = estrai_dati_da_url_maps(maps_url_cp)
         comune_finale_cp = comune_cp if comune_cp else place_cp
         luogo_str_cp, qsk_cp, zona_vento_cp, press_vento_str_cp, zona_sismica_cp, alt_cp = estrai_parametri_ntc_da_coordinate_e_comune(lat_cp, lon_cp, comune_finale_cp)
         
         pressione_vento_cp_val = float(press_vento_str_cp.split()[0])
-        
-        # Logica di priorità: manuale se maggiore di zero, altrimenti automatico da Maps
         neve_effettiva = neve_carport if neve_carport > 0.0 else qsk_cp
         vento_effettivo = vento_carport if vento_carport > 0.0 else pressione_vento_cp_val
 
         is_marittimo = ("isola" in luogo_str_cp.lower() or "sardegna" in luogo_str_cp.lower() or "pantelleria" in luogo_str_cp.lower() or "lampedusa" in luogo_str_cp.lower() or alt_cp < 40.0)
         ciclo_c5 = "Obbligatorio (Classe di corrosività C5 - Ambiente Marino / Industriale Severo)" if is_marittimo else "Standard protettivo zincato a caldo + verniciatura C3/C4"
 
-        # NUOVO: Combinazione Carichi NTC 2018 (Valutazione condizioni più gravose con riduzioni)
+        # Acquisizione parametri terreno
+        sigma_terreno_kn = 150.0
+        if "Scadente" in tipo_terreno_ui: sigma_terreno_kn = 50.0
+        elif "Medio" in tipo_terreno_ui: sigma_terreno_kn = 150.0
+        elif "Buono" in tipo_terreno_ui: sigma_terreno_kn = 300.0
+        elif "Ottimo" in tipo_terreno_ui: sigma_terreno_kn = 500.0
+        
+        if geo_file is not None:
+            val_estratto = estrai_portanza_da_pdf(geo_file)
+            if val_estratto:
+                sigma_terreno_kn = val_estratto
+                st.success(f"🌍 Dati estratti dal PDF! Capacità portante rilevata: {sigma_terreno_kn:.1f} kN/m²")
+            else:
+                st.warning("⚠️ Impossibile estrarre automaticamente la portanza dal PDF. Verrà utilizzato il valore generico selezionato.")
+
         q_neve_primario = (1.3 * (g1_carport + g2_carport)) + (1.5 * neve_effettiva) + (1.5 * 0.6 * vento_effettivo)
         q_vento_primario = (1.3 * (g1_carport + g2_carport)) + (1.5 * vento_effettivo) + (1.5 * 0.5 * neve_effettiva)
         q_totale_kn_mq = max(q_neve_primario, q_vento_primario)
@@ -2018,7 +2107,8 @@ with tab_carport:
             "zona_vento": zona_vento_cp,
             "pressione_vento": press_vento_str_cp,
             "zona_sismica": zona_sismica_cp,
-            "ciclo_c5": ciclo_c5
+            "ciclo_c5": ciclo_c5,
+            "sigma_terreno": sigma_terreno_kn
         }
         
         ris_calc = esegui_calcolo_carport(dati_carport)
@@ -2033,6 +2123,15 @@ with tab_carport:
             st.info(f"**Colonna Portante:** {dati_carport['sez_col']}")
             st.info(f"**Arcarecci di Copertura:** {dati_carport['sez_arc']}  \n*(Interasse massimo installazione: {dati_carport['passo_arc']:.2f} m)*")
             
+            st.markdown("### Connessioni e Reazioni al Piede")
+            st.success(f"**Nodo Top (Trave-Colonna):** ~{dati_carport['kg_nodo_top']} kg acciaio")
+            st.success(f"**Nodo Base (Ancoraggio):** ~{dati_carport['kg_nodo_base']} kg acciaio")
+            st.write(f"**Reazioni (SLU):** N = {dati_carport['N_base']} kN | V = {dati_carport['V_base']} kN | M = {dati_carport['M_base']} kNm")
+            
+            st.markdown("### Dimensionamento Plinti")
+            st.info(f"**Dimensione:** {dati_carport['dim_plinto']} ({dati_carport['forma_plinto']})")
+            st.info(f"**Materiali a plinto:** {dati_carport['vol_plinto']} mc Cls | {dati_carport['kg_armatura']} kg armatura")
+
             st.markdown("### Sistemi di Stabilizzazione")
             st.warning(f"**Copertura:** {dati_carport['cv_falda']}")
             st.warning(f"**Verticali:** {dati_carport['cv_vert']}")
