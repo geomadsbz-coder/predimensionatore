@@ -59,7 +59,6 @@ def azzera_dati(modulo="tutto"):
         for k, v in defaults_principale.items():
             if k in st.session_state:
                 st.session_state[k] = v
-        # I dizionari dati possiamo cancellarli tranquillamente perché non sono legati a widget grafici
         if 'dati_ultimi' in st.session_state:
             del st.session_state['dati_ultimi']
 
@@ -69,7 +68,6 @@ def azzera_dati(modulo="tutto"):
                 st.session_state[k] = v
         if 'xlam_ultimi' in st.session_state:
             del st.session_state['xlam_ultimi']
-        # Resettiamo il DataFrame associato all'editor senza toccare la chiave diretta del widget
         st.session_state['carichi_g2_xlam'] = pd.DataFrame([
             {"Descrizione": "Massetto e pavimentazione", "Carico [kN/m²]": 1.5},
             {"Descrizione": "Impianti e controsoffitto", "Carico [kN/m²]": 0.5}
@@ -87,6 +85,7 @@ def azzera_dati(modulo="tutto"):
             if k in st.session_state:
                 st.session_state[k] = v
 
+
 # --- GESTIONE SALVATAGGIO PROGETTI (FILE LOCALI) ---
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -97,9 +96,17 @@ class NpEncoder(json.JSONEncoder):
 
 def genera_json_progetto():
     stato_da_salvare = {}
+    # Lista delle chiavi (widget non assegnabili) da escludere rigorosamente dal salvataggio
+    chiavi_vietate = [
+        "xlam_g2_editor", "geo_file_cp", "carica_progetto_file", "file_cad_pdf",
+        "reset_main_btn", "reset_xlam_btn", "reset_travi_btn", "reset_cp_btn"
+    ]
+    
     for key, value in st.session_state.items():
-        if key in ["xlam_g2_editor", "geo_file_cp", "carica_progetto_file"]:
+        # Ignora le chiavi dei bottoni e dei file uploader
+        if any(vietata in key for vietata in chiavi_vietate):
             continue
+            
         if isinstance(value, pd.DataFrame):
             stato_da_salvare[key] = {"__type__": "dataframe", "data": value.to_dict(orient="records")}
         else:
@@ -112,7 +119,16 @@ def genera_json_progetto():
 
 def applica_json_progetto(json_string):
     dati_progetto = json.loads(json_string)
+    # Filtro di sicurezza anche in fase di caricamento
+    chiavi_vietate = [
+        "xlam_g2_editor", "geo_file_cp", "carica_progetto_file", "file_cad_pdf",
+        "reset_main_btn", "reset_xlam_btn", "reset_travi_btn", "reset_cp_btn"
+    ]
+    
     for key, value in dati_progetto.items():
+        if any(vietata in key for vietata in chiavi_vietate):
+            continue
+            
         if isinstance(value, dict) and value.get("__type__") == "dataframe":
             st.session_state[key] = pd.DataFrame(value["data"])
         else:
@@ -1411,7 +1427,7 @@ tab_principale, tab_xlam, tab_travi, tab_carport = st.tabs(["🏗️ Struttura P
 
 with tab_principale:
     st.subheader("Analisi Capitolato / Appunti di Progetto e File (CAD o PDF)")
-    file_caricato = st.file_uploader("📂 Carica un file CAD (.dxf) o un documento PDF (.pdf)", type=["dxf", "pdf"])
+    file_caricato = st.file_uploader("📂 Carica un file CAD (.dxf) o un documento PDF (.pdf)", type=["dxf", "pdf"], key="file_cad_pdf")
 
     testo_estratto_file = ""
     if file_caricato is not None:
