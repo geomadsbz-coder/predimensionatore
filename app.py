@@ -16,39 +16,76 @@ import pandas as pd
 
 # --- FUNZIONE GLOBALE DI RESET DATI TRAMITE CALLBACK ---
 def azzera_dati(modulo="tutto"):
-    keys_principale = [
-        'maps_url_ui', 'comune_cantiere_ui', 'lunghezza_edificio_ui', 'interasse_portali_ui',
-        'luce_totale_ui', 'altezza_gronda_ui', 'altezza_colmo_ui', 'cat_strutt', 'tipo_travatura',
-        'num_appoggi', 'pos_arcarecci', 'tipo_isolante', 'spessore_panni_pir', 'spessore_panni_lana',
-        'impianto_fv', 'carico_aggiuntivo', 'qsk_man_ui', 'vento_man_ui', 'accumulo_neve_attivo',
-        'tipo_ostacolo_neve', 'h_ostacolo_neve', 'tipo_isolante_parete', 'spessore_parete_pir',
-        'spessore_parete_lana', 'classe_fuoco_ui', 'classe_servizio_ui', 'dati_ultimi', 'testo_commerciale'
-    ]
-    keys_xlam = [
-        'maps_url_xlam', 'comune_xlam', 'luce_xlam_ui', 'xlam_g2_editor', 'carichi_g2_xlam', 'q_k_xlam', 'qs_k_xlam',
-        'chk_acc_xlam', 'tipo_ost_xlam', 'h_ost_xlam', 'limite_w_inst_ui', 'limite_w_netfin_ui',
-        'limite_w_fin_ui', 'xlam_fuoco', 'xlam_ultimi'
-    ]
-    keys_travi = [
-        'mat_trave_ui', 'grado_acc_ui', 'classe_legno_ui', 'essenza_legno_ui', 'luce_tr',
-        'usa_xlam_ui', 'q_distr_man', 'usa_storico_ui', 'trave_sel_ui', 'f_conc_man', 'pos_f_conc',
-        'travi_storico'
-    ]
-    keys_carport = [
-        'mod_carport', 'maps_url_cp', 'comune_cp', 'larghezza_carport', 'passo_telai_carport',
-        'num_campate_carport', 'g1_carport', 'g2_carport', 'neve_cp_man', 'vento_cp_man',
-        'geo_file_cp', 'tipo_terreno_ui'
-    ]
-
-    keys_to_clear = []
-    if modulo == "principale" or modulo == "tutto": keys_to_clear.extend(keys_principale)
-    if modulo == "xlam" or modulo == "tutto": keys_to_clear.extend(keys_xlam)
-    if modulo == "travi" or modulo == "tutto": keys_to_clear.extend(keys_travi)
-    if modulo == "carport" or modulo == "tutto": keys_to_clear.extend(keys_carport)
+    # Definisci i valori di default esatti per ogni widget standard
+    defaults_principale = {
+        'maps_url_ui': "", 'comune_cantiere_ui': "", 'lunghezza_edificio_ui': 25.0,
+        'interasse_portali_ui': 5.0, 'luce_totale_ui': 39.6, 'altezza_gronda_ui': 9.0,
+        'altezza_colmo_ui': 12.21, 'cat_strutt': "Portali ad anima piena",
+        'tipo_travatura': "Bi-falda semplice", 'num_appoggi': 3,
+        'pos_arcarecci': "Sopra i telai (Continuo)", 'tipo_isolante': "PIR / PUR",
+        'spessore_panni_pir': 50, 'spessore_panni_lana': 100, 'impianto_fv': False,
+        'carico_aggiuntivo': 0.0, 'qsk_man_ui': 0.0, 'vento_man_ui': 0.0,
+        'accumulo_neve_attivo': False, 'tipo_ostacolo_neve': "Parapetto",
+        'h_ostacolo_neve': 1.0, 'tipo_isolante_parete': "PIR / PUR",
+        'spessore_parete_pir': 50, 'spessore_parete_lana': 80,
+        'classe_fuoco_ui': "R 60", 'classe_servizio_ui': "Classe 2 (Umidità < 85%)",
+        'testo_commerciale': ""
+    }
     
-    for k in keys_to_clear:
-        if k in st.session_state:
-            del st.session_state[k]
+    defaults_xlam = {
+        'maps_url_xlam': "", 'comune_xlam': "", 'luce_xlam_ui': 5.0,
+        'q_k_xlam': 2.0, 'qs_k_xlam': 0.0,
+        'chk_acc_xlam': False, 'tipo_ost_xlam': "Parapetto", 'h_ost_xlam': 1.0,
+        'limite_w_inst_ui': 300, 'limite_w_netfin_ui': 300,
+        'limite_w_fin_ui': 250, 'xlam_fuoco': "R 0"
+    }
+    
+    defaults_travi = {
+        'mat_trave_ui': "Acciaio", 'grado_acc_ui': "S275", 'classe_legno_ui': "GL24h",
+        'essenza_legno_ui': "Abete", 'luce_tr': 5.0,
+        'usa_xlam_ui': False, 'q_distr_man': 0.0, 'usa_storico_ui': False,
+        'f_conc_man': 0.0, 'pos_f_conc': 2.5
+    }
+    
+    defaults_carport = {
+        'mod_carport': "SC-L3 (Stahl-Stahl)", 'maps_url_cp': "", 'comune_cp': "",
+        'larghezza_carport': 10.0, 'passo_telai_carport': 5.0,
+        'num_campate_carport': 5, 'g1_carport': 0.15, 'g2_carport': 0.20,
+        'neve_cp_man': 0.0, 'vento_cp_man': 0.0,
+        'tipo_terreno_ui': "Medio (Sabbie, Argille normali) ~ 1.5 daN/cm²"
+    }
+
+    if modulo in ["principale", "tutto"]:
+        for k, v in defaults_principale.items():
+            if k in st.session_state:
+                st.session_state[k] = v
+        # I dizionari dati possiamo cancellarli tranquillamente perché non sono legati a widget grafici
+        if 'dati_ultimi' in st.session_state:
+            del st.session_state['dati_ultimi']
+
+    if modulo in ["xlam", "tutto"]:
+        for k, v in defaults_xlam.items():
+            if k in st.session_state:
+                st.session_state[k] = v
+        if 'xlam_ultimi' in st.session_state:
+            del st.session_state['xlam_ultimi']
+        # Resettiamo il DataFrame associato all'editor senza toccare la chiave diretta del widget
+        st.session_state['carichi_g2_xlam'] = pd.DataFrame([
+            {"Descrizione": "Massetto e pavimentazione", "Carico [kN/m²]": 1.5},
+            {"Descrizione": "Impianti e controsoffitto", "Carico [kN/m²]": 0.5}
+        ])
+
+    if modulo in ["travi", "tutto"]:
+        for k, v in defaults_travi.items():
+            if k in st.session_state:
+                st.session_state[k] = v
+        if 'travi_storico' in st.session_state:
+            del st.session_state['travi_storico']
+
+    if modulo in ["carport", "tutto"]:
+        for k, v in defaults_carport.items():
+            if k in st.session_state:
+                st.session_state[k] = v
 
 # --- GESTIONE SALVATAGGIO PROGETTI (FILE LOCALI) ---
 class NpEncoder(json.JSONEncoder):
