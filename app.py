@@ -1152,6 +1152,10 @@ def esegui_calcolo_carport(dati):
     vento = dati.get('vento', 0.0)
     sigma_terreno_kn = dati.get('sigma_terreno', 150.0)
     
+    h_tr_eff = dati.get('h_trauf', 2.4)
+    h_fr_eff = dati.get('h_first', 3.0)
+    h_media = (h_tr_eff + h_fr_eff) / 2.0
+    
     passo_arc_max = 1.2 if "Acciaio" in tipo else 1.5
     n_arc = math.ceil(w / passo_arc_max)
     passo_arc = w / n_arc if n_arc > 0 else 1.0
@@ -1167,11 +1171,53 @@ def esegui_calcolo_carport(dati):
         h_arc = max(16, math.ceil(h_req/4)*4)
         sez_arc = f"Legno Lamellare GL24h 10x{int(h_arc)} cm"
 
-    if "Y" in forma:
-        L_cant = w / 2.0
-        M_trave = (q_tot * pt * L_cant**2) / 2.0
-    else:
-        M_trave = (q_tot * pt * w**2) / 8.0
+    # Nuova Logica Geometrica e Statica per Bipendolo asimmetrico e sbalzi
+    if "Y-Doppelcarport" in forma:
+        x_base = w / 2.0
+        x_t1 = w / 2.0 - 1.5
+        x_t2 = w / 2.0 + 1.5
+        z_t1 = h_fr_eff - ((h_fr_eff - h_tr_eff) * (1.5 / (w/2.0)))
+        z_t2 = z_t1
+        
+        L_cant = (w / 2.0) - 1.5
+        M_trave_1 = (q_tot * pt * L_cant**2) / 2.0
+        M_trave_2 = (q_tot * pt * 3.0**2) / 8.0
+        M_trave = max(M_trave_1, M_trave_2)
+        
+        L_strut1 = math.sqrt((x_t1 - x_base)**2 + z_t1**2)
+        L_strut2 = math.sqrt((x_t2 - x_base)**2 + z_t2**2)
+        L_col = L_strut1 + L_strut2
+        L_trave_tot = math.sqrt((w/2)**2 + (h_fr_eff - h_tr_eff)**2) * 2
+        L_diag_falda = math.sqrt((w / 2.0)**2 + pt**2 + (h_fr_eff - h_tr_eff)**2)
+        L_diag_vert = 0.0
+        
+    else: # Pultdach a singola falda (V-Strut)
+        x_base = 1.0
+        x_t1 = 0.5
+        x_t2 = min(w - 1.0, 3.5)
+        
+        if "fallend" in forma:
+            z_t1 = h_fr_eff - ((h_fr_eff - h_tr_eff) * (x_t1 / w))
+            z_t2 = h_fr_eff - ((h_fr_eff - h_tr_eff) * (x_t2 / w))
+        else:
+            z_t1 = h_tr_eff + ((h_fr_eff - h_tr_eff) * (x_t1 / w))
+            z_t2 = h_tr_eff + ((h_fr_eff - h_tr_eff) * (x_t2 / w))
+            
+        L_cant_back = x_t1
+        L_cant_front = w - x_t2
+        L_span = x_t2 - x_t1
+        
+        M_trave_back = (q_tot * pt * L_cant_back**2) / 2.0
+        M_trave_front = (q_tot * pt * L_cant_front**2) / 2.0
+        M_trave_span = (q_tot * pt * L_span**2) / 8.0
+        M_trave = max(M_trave_back, M_trave_front, M_trave_span)
+        
+        L_strut1 = math.sqrt((x_t1 - x_base)**2 + z_t1**2)
+        L_strut2 = math.sqrt((x_t2 - x_base)**2 + z_t2**2)
+        L_col = L_strut1 + L_strut2
+        L_trave_tot = math.sqrt(w**2 + (h_fr_eff - h_tr_eff)**2)
+        L_diag_falda = math.sqrt(w**2 + pt**2 + (h_fr_eff - h_tr_eff)**2)
+        L_diag_vert = math.sqrt(pt**2 + z_t1**2)
 
     if "Acciaio" in tipo.split('-')[1]:
         w_req_tr = (M_trave * 100) / 27.5
@@ -1189,8 +1235,6 @@ def esegui_calcolo_carport(dati):
         h_tr = max(24, math.ceil(h_req_tr/4)*4)
         sez_trave = f"BSH GL24h {b_tr}x{int(h_tr)} cm (consigliata a sezione variabile)"
 
-    h_media = (dati.get('h_trauf', 2.4) + dati.get('h_first', 3.0)) / 2.0
-    
     if "Y" in forma:
         N_col = (q_tot * pt * w)
         V_col = (vento * 1.5 * pt * h_media)
@@ -1203,9 +1247,9 @@ def esegui_calcolo_carport(dati):
         elif w_req_col < 1000: sez_col = "HEB 280 / HEA 320"
         else: sez_col = "HEB 320 / HEB 360"
     else:
-        N_col = (q_tot * pt * w) / 2.0
-        V_col = (vento * 1.5 * pt * h_media) / 2.0
-        M_col = V_col * h_media
+        N_col = (q_tot * pt * w) 
+        V_col = (vento * 1.5 * pt * h_media)
+        M_col = (V_col * h_media) + (N_col * 0.2) 
         
         w_req_col = (M_col * 100) / 27.5 + (N_col / 2.0) 
         if w_req_col < 80: sez_col = "Tubolare 100x100x4 / HEA 120"
@@ -1243,37 +1287,15 @@ def esegui_calcolo_carport(dati):
     dim_plinto_str = f"Ciabatta {B_pl:.1f}x{B_pl:.1f}x{H_pad:.1f}m + Dado {B_dado:.1f}x{B_dado:.1f}x{H_dado:.1f}m"
 
     cv_falda = "Tiranti in acciaio incrociati Ø 16 mm (campate di estremità)"
-    cv_vert = "Incastro rigido in fondazione (nessun controvento verticale previsto per viabilità)" if "Y" in forma else "Croci di Sant'Andrea in tubolare 80x80x4 mm o L 80x8 (sulla linea colonne)"
+    cv_vert = "Incastro rigido in fondazione (nessun controvento verticale previsto per viabilità)" if "Y" in forma else "Croci di Sant'Andrea in tubolare 80x80x4 mm o L 80x8 (sui puntoni posteriori)"
 
     num_telai = nc + 1
-    num_colonne = num_telai * (1 if "Y" in forma else 2) 
-    h_media_colonna = h_media
-    ml_colonne_tot = num_colonne * h_media_colonna
-    ml_travi_tot = num_telai * w * 1
+    num_colonne = num_telai * 1 
+    ml_colonne_tot = num_telai * L_col
+    ml_travi_tot = num_telai * L_trave_tot
     ml_arcarecci_tot = (n_arc + 1) * (nc * pt)
     
     mq_acciaio_totale = round((ml_colonne_tot + ml_travi_tot + ml_arcarecci_tot) * 0.8, 1)
-
-    h_tr_eff = dati.get('h_trauf', 2.4)
-    h_fr_eff = dati.get('h_first', 3.0)
-    
-    if "Y" in forma:
-        L_col = h_tr_eff
-        L_cantilever = math.sqrt((w / 2.0)**2 + (h_fr_eff - h_tr_eff)**2)
-        L_trave_tot = L_cantilever * 2
-        L_diag_falda = math.sqrt((w / 2.0)**2 + pt**2 + (h_fr_eff - h_tr_eff)**2)
-        L_diag_vert = 0.0
-    elif "fallend" in forma:
-        L_col = h_fr_eff
-        L_trave_tot = math.sqrt(w**2 + (h_fr_eff - h_tr_eff)**2)
-        L_diag_falda = math.sqrt(w**2 + pt**2 + (h_fr_eff - h_tr_eff)**2)
-        L_diag_vert = math.sqrt(pt**2 + L_col**2)
-    else:
-        L_col = h_tr_eff
-        L_trave_tot = math.sqrt(w**2 + (h_fr_eff - h_tr_eff)**2)
-        L_diag_falda = math.sqrt(w**2 + pt**2 + (h_fr_eff - h_tr_eff)**2)
-        L_diag_vert = math.sqrt(pt**2 + L_col**2)
-
     L_arcareccio = pt
 
     return {
@@ -1319,24 +1341,37 @@ def genera_modello_3d_carport(dati):
     
     for y in y_telai:
         if "Y-Doppelcarport" in forma:
-            x_col = w / 2.0
-            z_col = h_trauf
-            col_positions.append((x_col, y))
-            fig.add_trace(go.Scatter3d(x=[x_col, x_col], y=[y, y], z=[0, z_col], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna'))
-            fig.add_trace(go.Scatter3d(x=[x_col, 0], y=[y, y], z=[z_col, h_first], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Mensola'))
-            fig.add_trace(go.Scatter3d(x=[x_col, w], y=[y, y], z=[z_col, h_first], mode='lines', line=dict(color='firebrick', width=6), showlegend=False))
-        elif "fallend" in forma:
-            x_col = 0.0
-            z_col = h_first
-            col_positions.append((x_col, y))
-            fig.add_trace(go.Scatter3d(x=[x_col, x_col], y=[y, y], z=[0, z_col], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna'))
-            fig.add_trace(go.Scatter3d(x=[x_col, w], y=[y, y], z=[z_col, h_trauf], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Mensola'))
-        else: 
-            x_col = 0.0
-            z_col = h_trauf
-            col_positions.append((x_col, y))
-            fig.add_trace(go.Scatter3d(x=[x_col, x_col], y=[y, y], z=[0, z_col], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna'))
-            fig.add_trace(go.Scatter3d(x=[x_col, w], y=[y, y], z=[z_col, h_first], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Mensola'))
+            x_base = w / 2.0
+            x_t1 = w / 2.0 - 1.5
+            x_t2 = w / 2.0 + 1.5
+            z_t1 = h_first - ((h_first - h_trauf) * (1.5 / (w/2.0)))
+            z_t2 = z_t1
+            
+            col_positions.append((x_base, y))
+            
+            fig.add_trace(go.Scatter3d(x=[x_base, x_t1], y=[y, y], z=[0, z_t1], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna a Y (Bipendolo)'))
+            fig.add_trace(go.Scatter3d(x=[x_base, x_t2], y=[y, y], z=[0, z_t2], mode='lines', line=dict(color='darkblue', width=8), showlegend=False))
+            fig.add_trace(go.Scatter3d(x=[0, w/2.0, w], y=[y, y, y], z=[h_trauf, h_first, h_trauf], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Trave Principale'))
+            
+        else: # Pultdach
+            x_base = 1.0
+            x_t1 = 0.5
+            x_t2 = min(w - 1.0, 3.5)
+            
+            if "fallend" in forma:
+                z_t1 = h_first - ((h_first - h_trauf) * (x_t1 / w))
+                z_t2 = h_first - ((h_first - h_trauf) * (x_t2 / w))
+                z_0, z_w = h_first, h_trauf
+            else:
+                z_t1 = h_trauf + ((h_first - h_trauf) * (x_t1 / w))
+                z_t2 = h_trauf + ((h_first - h_trauf) * (x_t2 / w))
+                z_0, z_w = h_trauf, h_first
+                
+            col_positions.append((x_base, y))
+            
+            fig.add_trace(go.Scatter3d(x=[x_base, x_t1], y=[y, y], z=[0, z_t1], mode='lines', line=dict(color='darkblue', width=8), showlegend=(y==0), name='Colonna a V (Bipendolo)'))
+            fig.add_trace(go.Scatter3d(x=[x_base, x_t2], y=[y, y], z=[0, z_t2], mode='lines', line=dict(color='darkblue', width=8), showlegend=False))
+            fig.add_trace(go.Scatter3d(x=[0, w], y=[y, y], z=[z_0, z_w], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Trave Principale'))
 
     B_pl = dati.get('B_pl', 1.0)
     H_pad = dati.get('H_pad', 0.4)
@@ -1351,7 +1386,7 @@ def genera_modello_3d_carport(dati):
         z_bot_dado = -H_dado
         fig.add_trace(go.Scatter3d(x=[xc-hd, xc+hd, xc+hd, xc-hd, xc-hd], y=[yc-hd, yc-hd, yc+hd, yc+hd, yc-hd], z=[z_bot_dado]*5, mode='lines', line=dict(color='gray', width=4), showlegend=show_leg_pl, name='Plinto (Dado)'))
         fig.add_trace(go.Scatter3d(x=[xc-hd, xc+hd, xc+hd, xc-hd, xc-hd], y=[yc-hd, yc-hd, yc+hd, yc+hd, yc-hd], z=[z_top_dado]*5, mode='lines', line=dict(color='gray', width=4), showlegend=False))
-        for dx, dy in [(-hd, -hd), (hd, -hd), (hd, hd), (-hd, hd)]:
+        for dx, dy in [(-hd, -hd), (hd, hd), (hd, hd), (-hd, hd)]: 
             fig.add_trace(go.Scatter3d(x=[xc+dx, xc+dx], y=[yc+dy, yc+dy], z=[z_bot_dado, z_top_dado], mode='lines', line=dict(color='gray', width=4), showlegend=False))
 
         hp = B_pl / 2.0
@@ -1399,8 +1434,13 @@ def genera_modello_3d_carport(dati):
             fig.add_trace(go.Scatter3d(x=[xa, xb, None, xa, xb], y=[y1, y2, None, y2, y1], z=[za, zb, None, za, zb], mode='lines', line=dict(color='forestgreen', width=3), showlegend=show_leg_cv, name='Controventi Falda'))
         
         if not "Y" in forma:
-            z_col_top = h_first if "fallend" in forma else h_trauf
-            fig.add_trace(go.Scatter3d(x=[0, 0, None, 0, 0], y=[y1, y2, None, y2, y1], z=[0, z_col_top, None, z_col_top, 0], mode='lines', line=dict(color='darkorange', width=4), showlegend=(idx == campate_cv[0]), name='Controventi Verticali'))
+            x_t1 = 0.5
+            if "fallend" in forma:
+                z_t1 = h_first - ((h_first - h_trauf) * (x_t1 / w))
+            else:
+                z_t1 = h_trauf + ((h_first - h_trauf) * (x_t1 / w))
+                
+            fig.add_trace(go.Scatter3d(x=[x_t1, x_t1, None, x_t1, x_t1], y=[y1, y2, None, y2, y1], z=[0, z_t1, None, z_t1, 0], mode='lines', line=dict(color='darkorange', width=4), showlegend=(idx == campate_cv[0]), name='Controventi Verticali'))
 
     fig.update_layout(
         title=f"Modello 3D Carport ({nc} Campate - {forma})",
@@ -2263,7 +2303,7 @@ with tab_carport:
         with col_dw_c1:
             st.markdown("### Dimensionamento Elementi")
             st.info(f"**Trave di Falda:** {dati_carport['sez_trave']}  \n*(L = {dati_carport['L_trave']:.2f} m | M_ed = {dati_carport['M_trave']} kNm)*")
-            st.info(f"**Colonna Portante:** {dati_carport['sez_col']}  \n*(L = {dati_carport['L_col']:.2f} m)*")
+            st.info(f"**Colonna Portante (Struttura a V):** {dati_carport['sez_col']}  \n*(L totale bipendolo = {dati_carport['L_col']:.2f} m)*")
             st.info(f"**Arcarecci di Copertura:** {dati_carport['sez_arc']}  \n*(L modulo = {dati_carport['L_arcareccio']:.2f} m | Interasse max: {dati_carport['passo_arc']:.2f} m)*")
             
             st.markdown("### Connessioni e Reazioni al Piede")
