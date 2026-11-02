@@ -797,13 +797,24 @@ def genera_word_report(dati, distinta, logistica):
     doc.add_paragraph(f"Montanti Timpani: {dati.get('ml_tot_timpani_entrambe', 0):.2f} ml | Montanti Longitudinali: {dati.get('ml_tot_montanti_long_entrambe', 0):.2f} ml")
 
     doc.add_heading('5. Struttura Principale (Dimensionamento Elementi)', level=1)
+    doc.add_paragraph("--- TRAVATURE ---")
     if dati.get('categoria_struttura') in ["Capriate", "Travi Reticolari"]:
-        doc.add_paragraph("--- VARIANTE IN LEGNO ---\n" + dati.get('travi_legno', 'N.D.'))
-        doc.add_paragraph("--- VARIANTE IN ACCIAIO ---\n" + dati.get('travi_acciaio', 'N.D.'))
+        doc.add_paragraph("Variante Legno:\n" + dati.get('travi_legno', 'N.D.'))
+        doc.add_paragraph("Variante Acciaio:\n" + dati.get('travi_acciaio', 'N.D.'))
     else:
         doc.add_paragraph(f"Legno Lamellare: {dati.get('travi_legno', 'N.D.')}")
         doc.add_paragraph(f"Acciaio: {dati.get('travi_acciaio', 'N.D.')}")
         doc.add_paragraph(f"C.a.p.: {dati.get('travi_cap', 'N.D.')}")
+        
+    doc.add_paragraph("--- PILASTRI TELAIO PRINCIPALE ---")
+    doc.add_paragraph(f"Legno: Perimetrali [{dati.get('pilastri_perimetrali_legno')}] | Intermedi [{dati.get('pilastri_intermedi_legno')}]")
+    doc.add_paragraph(f"Acciaio: Perimetrali [{dati.get('pilastri_perimetrali_acciaio')}] | Intermedi [{dati.get('pilastri_intermedi_acciaio')}]")
+    doc.add_paragraph(f"C.a.p.: Perimetrali [{dati.get('pilastri_perimetrali_cap')}] | Intermedi [{dati.get('pilastri_intermedi_cap')}]")
+
+    doc.add_paragraph("--- PILASTRI SECONDARI (TESTATE) ---")
+    doc.add_paragraph(f"Legno: {dati.get('montante_sezione_legno', 'N.D.')}")
+    doc.add_paragraph(f"Acciaio: {dati.get('montante_sezione_acciaio', 'N.D.')}")
+    doc.add_paragraph(f"C.a.p.: {dati.get('montante_sezione_cap', 'N.D.')}")
     
     doc.add_heading('6. Connessioni, Nodi e Dettagli d’Ancoraggio', level=1)
     doc.add_paragraph(f"Nodo Trave-Pilastro: {dati.get('conn_trave_pilastro_tipo')} | Perimetrali: {dati.get('conn_trave_pilastro_perim_elementi')} ({dati.get('conn_trave_pilastro_perim_kg')})")
@@ -1171,7 +1182,6 @@ def esegui_calcolo_carport(dati):
         h_arc = max(16, math.ceil(h_req/4)*4)
         sez_arc = f"Legno Lamellare GL24h 10x{int(h_arc)} cm"
 
-    # Nuova Logica Geometrica e Statica per Bipendolo asimmetrico e sbalzi
     if "Y-Doppelcarport" in forma:
         x_base = w / 2.0
         x_t1 = w / 2.0 - 1.5
@@ -1191,7 +1201,7 @@ def esegui_calcolo_carport(dati):
         L_diag_falda = math.sqrt((w / 2.0)**2 + pt**2 + (h_fr_eff - h_tr_eff)**2)
         L_diag_vert = 0.0
         
-    else: # Pultdach a singola falda (V-Strut)
+    else: 
         x_base = 1.0
         x_t1 = 0.5
         x_t2 = min(w - 1.0, 3.5)
@@ -1353,7 +1363,7 @@ def genera_modello_3d_carport(dati):
             fig.add_trace(go.Scatter3d(x=[x_base, x_t2], y=[y, y], z=[0, z_t2], mode='lines', line=dict(color='darkblue', width=8), showlegend=False))
             fig.add_trace(go.Scatter3d(x=[0, w/2.0, w], y=[y, y, y], z=[h_trauf, h_first, h_trauf], mode='lines', line=dict(color='firebrick', width=6), showlegend=(y==0), name='Trave Principale'))
             
-        else: # Pultdach
+        else: 
             x_base = 1.0
             x_t1 = 0.5
             x_t2 = min(w - 1.0, 3.5)
@@ -1800,17 +1810,28 @@ with tab_principale:
                 st.error(dati.get('travi_cap', 'N.D.'))
         
         st.markdown("---")
-        st.markdown("### 🏛️ 6. Pilastri (Perimetrali e Intermedi)")
+        st.markdown("### 🏛️ 6. Pilastri Strutturali")
+        
+        st.markdown("#### 🏗️ Pilastri del Telaio Principale")
         col_p1, col_p2, col_p3 = st.columns(3)
         with col_p1:
-            st.markdown("#### 🌲 Legno Lamellare")
-            st.success(dati.get('pilastri_perimetrali_legno', 'N.D.'))
+            st.markdown("##### 🌲 Legno Lamellare")
+            st.success(f"**Perimetrali:** {dati.get('pilastri_perimetrali_legno', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_legno', 'N.D.')}")
         with col_p2:
-            st.markdown("#### ⚙️ Acciaio")
-            st.warning(dati.get('pilastri_perimetrali_acciaio', 'N.D.'))
+            st.markdown("##### ⚙️ Acciaio")
+            st.warning(f"**Perimetrali:** {dati.get('pilastri_perimetrali_acciaio', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_acciaio', 'N.D.')}")
         with col_p3:
-            st.markdown("#### 🏛️ C.a.p.")
-            st.error(dati.get('pilastri_perimetrali_cap', 'N.D.'))
+            st.markdown("##### 🏛️ C.a.p.")
+            st.error(f"**Perimetrali:** {dati.get('pilastri_perimetrali_cap', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_cap', 'N.D.')}")
+            
+        st.markdown("#### 🧱 Pilastri Secondari (di Testata / Antivento)")
+        col_ps1, col_ps2, col_ps3 = st.columns(3)
+        with col_ps1:
+            st.success(f"**Sezione:** {dati.get('montante_sezione_legno', 'N.D.')}")
+        with col_ps2:
+            st.warning(f"**Profilo:** {dati.get('montante_sezione_acciaio', 'N.D.')}")
+        with col_ps3:
+            st.error(f"**Prefabbricato:** {dati.get('montante_sezione_cap', 'N.D.')}")
         
         st.markdown("---")
         st.markdown("### 🔗 7. Stabilizzazione e Controventi")
