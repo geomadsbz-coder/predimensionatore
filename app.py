@@ -584,15 +584,27 @@ def esegui_calcolo_deterministico(dati_geo):
     elif w_el_rif > 1000: pil_p_acc, pil_i_acc = "HEB 200", "HEA 160"
     else: pil_p_acc, pil_i_acc = "HEB 180", "HEA 140"
 
+    # Nodi perimetrali
     n_bulloni_perim = max(6, int(v_ed / 25.0) * 2)
     peso_conn_perim_kg = round(n_bulloni_perim * 4.0 + (h_pil_perim_cm * b_pil_perim_cm * 0.025) + 25.0, 1)
     n_anc_perim = max(4, int(v_ed / 30.0) * 2)
     peso_anc_perim_kg = round(n_anc_perim * 4.5 + (h_pil_perim_cm * b_pil_perim_cm * 0.03) + 30.0, 1)
 
+    # Nodi intermedi
     n_bulloni_interm = max(4, int(v_ed / 30.0) * 2)
     peso_conn_interm_kg = round(n_bulloni_interm * 3.8 + (h_pil_interm_cm * b_pil_interm_cm * 0.022) + 20.0, 1)
     n_anc_interm = max(4, int(v_ed / 35.0) * 2)
     peso_anc_interm_kg = round(n_anc_interm * 4.0 + (h_pil_interm_cm * b_pil_interm_cm * 0.025) + 25.0, 1)
+
+    # Nodi testata (nuovo calcolo connessioni)
+    n_bulloni_testata = max(4, int(v_ed / 40.0) * 2)
+    peso_conn_testata_kg = round(n_bulloni_testata * 3.5 + 20.0, 1)
+    n_anc_testata = max(4, int(v_ed / 45.0) * 2)
+    peso_anc_testata_kg = round(n_anc_testata * 4.0 + 22.0, 1)
+
+    # Nodi colmo (nuovo calcolo connessioni)
+    n_bulloni_colmo = max(6, int(v_ed / 20.0) * 2)
+    peso_conn_colmo_kg = round(n_bulloni_colmo * 4.5 + 40.0, 1)
 
     num_montanti_per_campata_timpano = num_sottocampate_timpano - 1
     num_montanti_timpano_singola_facciata = num_montanti_per_campata_timpano * (num_appoggi - 1)
@@ -690,17 +702,27 @@ def esegui_calcolo_deterministico(dati_geo):
         "controventi_copertura_legno": "Diagonali in legno lamellare GL24h 14x14 cm", "controventi_copertura_acciaio": "Tubolari incrociati Ø 89x4 mm",
         "controventi_parete_pos": "Campate di estremità",
         "controventi_parete_legno": "Diagonali GL 16x16 cm", "controventi_parete_acciaio": "Croci di Sant'Andrea L 80x8",
+        
         "conn_trave_pilastro_tipo": "Nodo semi-rigido con piastre",
         "conn_trave_pilastro_perim_elementi": f"N. {n_bulloni_perim} bulloni 8.8 M20",
         "conn_trave_pilastro_perim_kg": f"{peso_conn_perim_kg} kg",
         "conn_trave_pilastro_interm_elementi": f"N. {n_bulloni_interm} bulloni 8.8 M20",
         "conn_trave_pilastro_interm_kg": f"{peso_conn_interm_kg} kg",
+        "conn_trave_pilastro_testata_elementi": f"N. {n_bulloni_testata} bulloni 8.8 M16",
+        "conn_trave_pilastro_testata_kg": f"{peso_conn_testata_kg} kg",
+        
         "conn_pilastro_fondazione_tipo": "Cerniera/Incastro",
         "conn_pilastro_fondazione_perim_elementi": f"N. {n_anc_perim} tirafondi M24",
         "conn_pilastro_fondazione_perim_kg": f"{peso_anc_perim_kg} kg",
         "conn_pilastro_fondazione_interm_elementi": f"N. {n_anc_interm} tirafondi M24",
         "conn_pilastro_fondazione_interm_kg": f"{peso_anc_interm_kg} kg",
+        "conn_pilastro_fondazione_testata_elementi": f"N. {n_anc_testata} tirafondi M20",
+        "conn_pilastro_fondazione_testata_kg": f"{peso_anc_testata_kg} kg",
+        
         "dettaglio_giunto_colmo": "Piastra di colmo bullonata",
+        "conn_giunto_colmo_elementi": f"N. {n_bulloni_colmo} bulloni 8.8 M20",
+        "conn_giunto_colmo_kg": f"{peso_conn_colmo_kg} kg",
+        
         "classe_resistenza_fuoco": classe_fuoco,
         "classe_servizio": classe_servizio,
         "mq_intumescente": f"{mq_acciaio} mq",
@@ -922,7 +944,6 @@ def genera_word_report(dati, distinta, logistica):
         num_pil_int_princ = dati.get('num_pilastri_interm_principali', 0)
         num_pil_int_test = dati.get('num_pilastri_interm_testata', 0)
         tot_interm = num_pil_int_princ + num_pil_int_test
-        # Altezza media approssimata per pilastri intermedi: prendiamo h_colmo come cautela, o una media.
         ml_interm_media = dati.get('altezza_colmo', 0.0) 
         ml_interm_tot = tot_interm * ml_interm_media
         doc.add_paragraph(f"Legno: {dati.get('pilastri_intermedi_legno')} -> {tot_interm} pz (h media ~{ml_interm_media:.2f} m, Tot: {ml_interm_tot:.2f} ml)")
@@ -942,14 +963,19 @@ def genera_word_report(dati, distinta, logistica):
         doc.add_paragraph(f"Sviluppi singoli per lato: {', '.join(f'{x:.2f} m' for x in sviluppi_testata)}")
     
     doc.add_heading('6. Connessioni, Nodi e Dettagli d’Ancoraggio', level=1)
-    doc.add_paragraph(f"Nodo Trave-Pilastro: {dati.get('conn_trave_pilastro_tipo')} | Perimetrali: {dati.get('conn_trave_pilastro_perim_elementi')} ({dati.get('conn_trave_pilastro_perim_kg')})")
+    doc.add_paragraph(f"Nodo Trave-Pilastro: {dati.get('conn_trave_pilastro_tipo')}")
+    doc.add_paragraph(f"- Perimetrali: {dati.get('conn_trave_pilastro_perim_elementi')} ({dati.get('conn_trave_pilastro_perim_kg')})")
+    doc.add_paragraph(f"- Di Testata: {dati.get('conn_trave_pilastro_testata_elementi')} ({dati.get('conn_trave_pilastro_testata_kg')})")
     if dati.get('num_appoggi', 3) > 2:
-        doc.add_paragraph(f"Nodi Intermedi: {dati.get('conn_trave_pilastro_interm_elementi')} ({dati.get('conn_trave_pilastro_interm_kg')})")
-    doc.add_paragraph(f"Ancoraggi di Base: {dati.get('conn_pilastro_fondazione_tipo')} | Perimetrali: {dati.get('conn_pilastro_fondazione_perim_elementi')} ({dati.get('conn_pilastro_fondazione_perim_kg')})")
+        doc.add_paragraph(f"- Intermedi: {dati.get('conn_trave_pilastro_interm_elementi')} ({dati.get('conn_trave_pilastro_interm_kg')})")
+    
+    doc.add_paragraph(f"Ancoraggi di Base: {dati.get('conn_pilastro_fondazione_tipo')}")
+    doc.add_paragraph(f"- Perimetrali: {dati.get('conn_pilastro_fondazione_perim_elementi')} ({dati.get('conn_pilastro_fondazione_perim_kg')})")
+    doc.add_paragraph(f"- Di Testata: {dati.get('conn_pilastro_fondazione_testata_elementi')} ({dati.get('conn_pilastro_fondazione_testata_kg')})")
     if dati.get('num_appoggi', 3) > 2:
-        doc.add_paragraph(f"Ancoraggi Intermedi: {dati.get('conn_pilastro_fondazione_interm_elementi')} ({dati.get('conn_pilastro_fondazione_interm_kg')})")
-    if "giuntata" in dati.get('tipo_travatura', '').lower():
-        doc.add_paragraph(f"Dettaglio Giunto in Colmo: {dati.get('dettaglio_giunto_colmo')}")
+        doc.add_paragraph(f"- Intermedi: {dati.get('conn_pilastro_fondazione_interm_elementi')} ({dati.get('conn_pilastro_fondazione_interm_kg')})")
+    
+    doc.add_paragraph(f"Dettaglio Giunto in Colmo: {dati.get('dettaglio_giunto_colmo')} | Elementi: {dati.get('conn_giunto_colmo_elementi')} ({dati.get('conn_giunto_colmo_kg')})")
 
     doc.add_heading('7. Protezione Antincendio, Durabilità e Note', level=1)
     doc.add_paragraph(f"Classe Resistenza al Fuoco: {dati.get('classe_resistenza_fuoco')} | Superficie Acciaio: {dati.get('mq_intumescente')}")
@@ -2072,23 +2098,39 @@ with tab_principale:
         with col_n1:
             st.markdown("#### 🔗 Connessione Pilastro / Trave")
             st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
+            
             st.write(f"- **Nodi Perimetrali:** {dati.get('conn_trave_pilastro_perim_elementi', 'N.D.')}")
             st.metric("Peso Acciaio Nodo Perimetrale", dati.get('conn_trave_pilastro_perim_kg', 'N.D.'))
+            
+            st.write(f"- **Nodi di Testata:** {dati.get('conn_trave_pilastro_testata_elementi', 'N.D.')}")
+            st.metric("Peso Acciaio Nodo di Testata", dati.get('conn_trave_pilastro_testata_kg', 'N.D.'))
+            
             if dati.get('num_appoggi', 3) > 2:
                 st.write(f"- **Nodi Intermedi:** {dati.get('conn_trave_pilastro_interm_elementi', 'N.D.')}")
                 st.metric("Peso Acciaio Nodo Intermedio", dati.get('conn_trave_pilastro_interm_kg', 'N.D.'))
+                
         with col_n2:
             st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
             st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
+            
             st.write(f"- **Ancoraggi Perimetrali:** {dati.get('conn_pilastro_fondazione_perim_elementi', 'N.D.')}")
-            st.metric("Peso Acciaio Base Perimetrale", dati.get('conn_pilast_fondazione_perim_kg', 'N.D.') if 'conn_pilast_fondazione_perim_kg' in dati else dati.get('conn_pilastro_fondazione_perim_kg', 'N.D.'))
+            st.metric("Peso Acciaio Base Perimetrale", dati.get('conn_pilastro_fondazione_perim_kg', 'N.D.'))
+            
+            st.write(f"- **Ancoraggi di Testata:** {dati.get('conn_pilastro_fondazione_testata_elementi', 'N.D.')}")
+            st.metric("Peso Acciaio Base di Testata", dati.get('conn_pilastro_fondazione_testata_kg', 'N.D.'))
+            
             if dati.get('num_appoggi', 3) > 2:
                 st.write(f"- **Ancoraggi Intermedi:** {dati.get('conn_pilastro_fondazione_interm_elementi', 'N.D.')}")
                 st.metric("Peso Acciaio Base Intermedia", dati.get('conn_pilastro_fondazione_interm_kg', 'N.D.'))
-        
-        if "giuntata" in dati.get('tipo_travatura', '').lower():
-            st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
 
+        st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
+        col_colmo1, col_colmo2 = st.columns(2)
+        with col_colmo1:
+            st.write(f"- **Connessione di Colmo:** {dati.get('conn_giunto_colmo_elementi', 'N.D.')}")
+        with col_colmo2:
+            st.metric("Peso Acciaio Giunto di Colmo", dati.get('conn_giunto_colmo_kg', 'N.D.'))
+
+        st.markdown("---")
         st.markdown("### 🔥 9. Requisiti di Resistenza al Fuoco e Durabilità")
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
