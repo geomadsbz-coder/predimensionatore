@@ -320,6 +320,8 @@ def esegui_calcolo_deterministico(dati_geo):
     tipo_copertura = dati_geo.get('tipo_copertura', 'Bi-falda')
     categoria_struttura = dati_geo.get('categoria_struttura', 'Portali ad anima piena')
     tipo_travatura = dati_geo.get('tipo_travatura', 'Bi-falda semplice')
+    num_campate = dati_geo['num_campate']
+    num_telai = num_campate + 1
     
     lat = dati_geo.get('latitudine', 46.4983)
     lon = dati_geo.get('longitudine', 11.3548)
@@ -421,6 +423,7 @@ def esegui_calcolo_deterministico(dati_geo):
     h_arc_legno = ((h_arc_legno + 3) // 4) * 4
     sez_arc_legno = f"GL24h 10x{h_arc_legno} cm"
 
+    # --- CALCOLO TRAVI PRINCIPALI INTERNE ---
     q_ed_portale = interasse * q_tot_copertura_mq
     luce_campata = luce_totale / (num_appoggi - 1) if num_appoggi >= 3 else luce_totale
     
@@ -441,6 +444,16 @@ def esegui_calcolo_deterministico(dati_geo):
     elif "R 90" in classe_fuoco: fuoco_add = 4
     elif "R 120" in classe_fuoco: fuoco_add = 6
 
+    # --- CALCOLO TRAVI DI TESTATA ---
+    # Area di influenza dimezzata
+    q_ed_testata = (interasse / 2.0) * q_tot_copertura_mq
+    passo_max_montanti = 6.0 
+    num_sottocampate_timpano = max(1, int(np.ceil(luce_campata / passo_max_montanti)))
+    passo_montanti_timpano = luce_campata / num_sottocampate_timpano if num_sottocampate_timpano > 0 else luce_campata
+    
+    # Momento flettente della testata considerando gli appoggi sui montanti
+    m_ed_testata = (q_ed_testata * passo_montanti_timpano ** 2) / 8.0
+
     if categoria_struttura == "Capriate":
         if N_max_truss < 150: sez_catena_L, sez_punt_L, sez_mon_L, sez_saet_L = "20x24 cm", "20x24 cm", "20x20 cm", "16x16 cm"
         elif N_max_truss < 300: sez_catena_L, sez_punt_L, sez_mon_L, sez_saet_L = "24x28 cm", "24x28 cm", "24x24 cm", "20x20 cm"
@@ -456,17 +469,21 @@ def esegui_calcolo_deterministico(dati_geo):
         L_saettone = math.sqrt((luce_totale/4)**2 + (H_truss/2)**2)
 
         def build_capriata_desc(s_cat, s_punt, s_mon, s_saet):
-            dett = f"• Catena Inferiore: 1x {L_catena:.2f}m | Sez. {s_cat}\n"
-            dett += f"• Puntoni Sup.: 2x {L_puntone:.2f}m | Sez. {s_punt}\n"
+            dett = f"• Catena Inferiore: Sez. {s_cat}\n"
+            dett += f"• Puntoni Sup.: Sez. {s_punt}\n"
             if tipo_travatura in ["Con Monaco", "Classica o alla Palladiana", "Composta o a doppia catena"]:
-                dett += f"• Monaco: 1x {L_monaco:.2f}m | Sez. {s_mon}\n"
+                dett += f"• Monaco: Sez. {s_mon}\n"
             if tipo_travatura in ["Classica o alla Palladiana", "Composta o a doppia catena"]:
-                dett += f"• Saettoni: 2x {L_saettone:.2f}m | Sez. {s_saet}\n"
+                dett += f"• Saettoni: Sez. {s_saet}\n"
             return dett
 
         travi_legno_out = build_capriata_desc(sez_catena_L, sez_punt_L, sez_mon_L, sez_saet_L)
         travi_acciaio_out = build_capriata_desc(sez_catena_A, sez_punt_A, sez_mon_A, sez_saet_A)
         travi_cap_out = "N.D."
+        
+        # Testate per capriate (spesso capriata intera o ridotta, usiamo capriata analoga ma più snella)
+        travi_testata_legno_out = "Capriata di testata (sezione ridotta -15%)"
+        travi_testata_acciaio_out = "Capriata di testata (sezione ridotta -15%)"
 
     elif categoria_struttura == "Travi Reticolari":
         if N_max_truss < 250: sez_corr_A, sez_diag_A = "Tubolare 120x120x5", "Tubolare 80x80x4"
@@ -489,19 +506,22 @@ def esegui_calcolo_deterministico(dati_geo):
         num_montanti = num_campi - 1
 
         def build_reticolare_desc(s_corr, s_diag):
-            dett = f"• Corrente Inf: L = {L_corr_inf:.2f}m | Sez. {s_corr}\n"
-            dett += f"• Corrente Sup: L = {L_corr_sup:.2f}m | Sez. {s_corr}\n"
+            dett = f"• Correnti: Sez. {s_corr}\n"
             if num_montanti > 0 and tipo_travatura != "Travatura Warren":
-                dett += f"• Montanti (x{num_montanti}) | Sez. {s_diag}\n"
+                dett += f"• Montanti: Sez. {s_diag}\n"
             if num_diag > 0:
-                dett += f"• Diagonali (x{num_diag}) | Sez. {s_diag}\n"
+                dett += f"• Diagonali: Sez. {s_diag}\n"
             return dett
 
         travi_legno_out = build_reticolare_desc(sez_corr_L, sez_diag_L)
         travi_acciaio_out = build_reticolare_desc(sez_corr_A, sez_diag_A)
         travi_cap_out = "N.D."
+        
+        travi_testata_legno_out = "Reticolare di testata (sezione ridotta -15%)"
+        travi_testata_acciaio_out = "Reticolare di testata (sezione ridotta -15%)"
 
     else:
+        # Dimensionamento Principali
         b_legno_cm = 20 + (fuoco_add * 2 if "R 0" not in classe_fuoco else 0)
         w_req_cm3 = (m_ed * 1e6) / f_md_trave  
         h_legno_cm = int((6 * w_req_cm3 / b_legno_cm) ** 0.5)
@@ -518,9 +538,25 @@ def esegui_calcolo_deterministico(dati_geo):
         h_cap_cm = max(80, ((int(h_legno_cm * 1.2) + 4) // 5) * 5)
         profilo_cap = f"Trave a T rovescia precompressa altezza {h_cap_cm} cm"
 
-        travi_legno_out = f"Base {b_legno_cm} cm x Altezza {h_legno_cm} cm (GL24h - {classe_fuoco})"
+        travi_legno_out = f"Base {b_legno_cm} cm x Altezza {h_legno_cm} cm (GL24h)"
         travi_acciaio_out = f"Profilo {profilo_acciaio} S355JR"
         travi_cap_out = profilo_cap
+        
+        # Dimensionamento Testata
+        w_req_testata_cm3 = (m_ed_testata * 1e6) / f_md_trave
+        b_testata_legno = 16 + (fuoco_add * 2 if "R 0" not in classe_fuoco else 0)
+        h_testata_legno = int((6 * w_req_testata_cm3 / b_testata_legno) ** 0.5)
+        h_testata_legno = max(24, ((h_testata_legno + 3) // 4) * 4)
+        if "R 0" not in classe_fuoco: h_testata_legno += fuoco_add * 2
+        travi_testata_legno_out = f"Base {b_testata_legno} cm x Altezza {h_testata_legno} cm (GL24h)"
+
+        w_el_req_testata = (m_ed_testata * 100.0) / 33.8
+        if w_el_req_testata > 1000: profilo_testata_acc = "IPE 400"
+        elif w_el_req_testata > 500: profilo_testata_acc = "IPE 300"
+        elif w_el_req_testata > 200: profilo_testata_acc = "IPE 240"
+        elif w_el_req_testata > 100: profilo_testata_acc = "IPE 200"
+        else: profilo_testata_acc = "IPE 160"
+        travi_testata_acciaio_out = f"Profilo {profilo_testata_acc} S355JR"
 
     q_w = pressione_vento * interasse
     M_base_vento = (q_w * h_gronda**2) / 2
@@ -558,11 +594,8 @@ def esegui_calcolo_deterministico(dati_geo):
     n_anc_interm = max(4, int(v_ed / 35.0) * 2)
     peso_anc_interm_kg = round(n_anc_interm * 4.0 + (h_pil_interm_cm * b_pil_interm_cm * 0.025) + 25.0, 1)
 
-    passo_max_montanti = 6.0 
-    num_sottocampate_timpano = max(1, int(np.ceil(luce_campata / passo_max_montanti)))
     num_montanti_per_campata_timpano = num_sottocampate_timpano - 1
     num_montanti_timpano_singola_facciata = num_montanti_per_campata_timpano * (num_appoggi - 1)
-    passo_montanti_timpano = luce_campata / num_sottocampate_timpano if num_sottocampate_timpano > 0 else 0
 
     ml_tot_montanti_timpano = 0.0
     ml_per_montante_timpano = []
@@ -590,24 +623,53 @@ def esegui_calcolo_deterministico(dati_geo):
     ml_tot_montanti_long_singola_parete = num_totale_montanti_long_singola_parete * h_gronda
     ml_tot_montanti_long_entrambe_pareti = ml_tot_montanti_long_singola_parete * 2
 
-    if h_colmo <= 6.5: montante_legno, montante_acciaio = f"Sezione 14x14 cm (GL24h - {classe_fuoco})", "HEA 120"
-    elif h_colmo <= 9.5: montante_legno, montante_acciaio = f"Sezione 16x16 cm (GL24h - {classe_fuoco})", "HEA 140"
-    elif h_colmo <= 12.5: montante_legno, montante_acciaio = f"Sezione 16x24 cm (GL24h - {classe_fuoco})", "HEA 180"
-    else: montante_legno, montante_acciaio = f"Sezione 20x28 cm (GL24h - {classe_fuoco})", "HEA 220"
+    if h_colmo <= 6.5: montante_legno, montante_acciaio = f"Sezione 14x14 cm (GL24h)", "HEA 120"
+    elif h_colmo <= 9.5: montante_legno, montante_acciaio = f"Sezione 16x16 cm (GL24h)", "HEA 140"
+    elif h_colmo <= 12.5: montante_legno, montante_acciaio = f"Sezione 16x24 cm (GL24h)", "HEA 180"
+    else: montante_legno, montante_acciaio = f"Sezione 20x28 cm (GL24h)", "HEA 220"
 
-    mq_acciaio = round((luce_totale + h_gronda * 2) * (dati_geo['num_campate'] + 1) * 0.6, 1)
+    mq_acciaio = round((luce_totale + h_gronda * 2) * (num_campate + 1) * 0.6, 1)
+    
+    # Quantità di sviluppo e numeri pezzi
+    num_travi_falda_per_telaio = 1 if tipo_copertura == "Mono-falda" else 2
+    num_travi_principali = (num_telai - 2) * num_travi_falda_per_telaio
+    num_travi_testata = 2 * num_travi_falda_per_telaio
+    ml_trave_singola = round(sviluppo_falda, 2)
+    
+    num_pilastri_perim_principali = (num_telai - 2) * 2
+    num_pilastri_perim_testata = 4 # i 4 angoli
+    
+    if num_appoggi > 2:
+        num_pilastri_interm_principali = (num_telai - 2) * (num_appoggi - 2)
+        num_pilastri_interm_testata = 2 * (num_appoggi - 2)
+    else:
+        num_pilastri_interm_principali = 0
+        num_pilastri_interm_testata = 0
 
     risultati_deterministici = {
         "luogo": luogo_str, "qsk": qsk, "zona_vento": zona_vento, "pressione_vento": press_vento_str, "zona_sismica": zona_sismica,
         "classe_uso": "Classe II", "fattore_struttura_q": "q = 2.0",
+        
         "travi_legno": travi_legno_out, "travi_acciaio": travi_acciaio_out, "travi_cap": travi_cap_out,
+        "travi_testata_legno": travi_testata_legno_out, "travi_testata_acciaio": travi_testata_acciaio_out,
+        "num_travi_principali": num_travi_principali, "num_travi_testata": num_travi_testata,
+        "ml_trave_singola": ml_trave_singola,
+        
         "b_trave_legno_cm": locals().get('b_legno_cm', 20),
         "h_trave_legno_cm": locals().get('h_legno_cm', 80),
+        
         "pilastri_perimetrali_legno": f"Sezione {b_pil_perim_cm}x{h_pil_perim_cm} cm (Drift H/150 - {classe_fuoco})",
         "pilastri_intermedi_legno": f"Sezione {b_pil_interm_cm}x{h_pil_interm_cm} cm ({classe_fuoco})",
         "pilastri_perimetrali_acciaio": f"Profilo {pil_p_acc} S355JR",
         "pilastri_intermedi_acciaio": f"Profilo {pil_i_acc} S355JR",
         "pilastri_perimetrali_cap": f"C.A.P. 40x45 cm", "pilastri_intermedi_cap": f"C.A.P. 40x40 cm",
+        
+        "num_pilastri_perim_principali": num_pilastri_perim_principali,
+        "num_pilastri_perim_testata": num_pilastri_perim_testata,
+        "num_pilastri_interm_principali": num_pilastri_interm_principali,
+        "num_pilastri_interm_testata": num_pilastri_interm_testata,
+        "ml_pilastro_perim": h_gronda,
+        
         "passo_arcarecci_calc": round(passo_arcarecci, 2), "sezione_arcarecci": f"{sez_arc}", "sezione_arcarecci_legno": f"{sez_arc_legno}",
         "verifica_arcarecci": f"Verificato ({pos_arcarecci}) - M_ed: {M_ed_arc:.1f} kNm",
         "passo_baraccatura_calc": round(passo_baraccatura, 2),
@@ -623,7 +685,7 @@ def esegui_calcolo_deterministico(dati_geo):
         "passo_montanti_long": round(passo_montanti_long, 2),
         "ml_tot_montanti_long_entrambe": round(ml_tot_montanti_long_entrambe_pareti, 2),
         "montante_sezione_legno": montante_legno, "montante_sezione_acciaio": montante_acciaio, "montante_sezione_cap": "C.A.P. 20x20 cm",
-        "campate_controventi_indici": [0, dati_geo['num_campate'] - 1],
+        "campate_controventi_indici": [0, num_campate - 1],
         "controventi_copertura_pos": "Campate di estremità",
         "controventi_copertura_legno": "Diagonali in legno lamellare GL24h 14x14 cm", "controventi_copertura_acciaio": "Tubolari incrociati Ø 89x4 mm",
         "controventi_parete_pos": "Campate di estremità",
@@ -823,33 +885,61 @@ def genera_word_report(dati, distinta, logistica):
     doc.add_paragraph(f"Montanti Timpani: {dati.get('ml_tot_timpani_entrambe', 0):.2f} ml | Montanti Longitudinali: {dati.get('ml_tot_montanti_long_entrambe', 0):.2f} ml")
 
     doc.add_heading('5. Struttura Principale (Dimensionamento Elementi)', level=1)
-    doc.add_paragraph("--- TRAVATURE ---")
+    
+    doc.add_paragraph("--- TRAVATURE PRINCIPALI (Telai intermedi) ---")
+    num_tp = dati.get('num_travi_principali', 0)
+    ml_tp_unit = dati.get('ml_trave_singola', 0.0)
+    ml_tp_tot = num_tp * ml_tp_unit
+    
     if dati.get('categoria_struttura') in ["Capriate", "Travi Reticolari"]:
-        doc.add_paragraph("Variante Legno:\n" + dati.get('travi_legno', 'N.D.'))
-        doc.add_paragraph("Variante Acciaio:\n" + dati.get('travi_acciaio', 'N.D.'))
+        doc.add_paragraph(f"Legno: {dati.get('travi_legno', 'N.D.')} -> {num_tp} pz (L={ml_tp_unit:.2f} m, Tot: {ml_tp_tot:.2f} ml)")
+        doc.add_paragraph(f"Acciaio: {dati.get('travi_acciaio', 'N.D.')} -> {num_tp} pz (L={ml_tp_unit:.2f} m, Tot: {ml_tp_tot:.2f} ml)")
     else:
-        doc.add_paragraph(f"Legno Lamellare: {dati.get('travi_legno', 'N.D.')}")
-        doc.add_paragraph(f"Acciaio: {dati.get('travi_acciaio', 'N.D.')}")
-        doc.add_paragraph(f"C.a.p.: {dati.get('travi_cap', 'N.D.')}")
+        doc.add_paragraph(f"Legno: {dati.get('travi_legno', 'N.D.')} -> {num_tp} pz (L={ml_tp_unit:.2f} m, Tot: {ml_tp_tot:.2f} ml)")
+        doc.add_paragraph(f"Acciaio: {dati.get('travi_acciaio', 'N.D.')} -> {num_tp} pz (L={ml_tp_unit:.2f} m, Tot: {ml_tp_tot:.2f} ml)")
+        doc.add_paragraph(f"C.a.p.: {dati.get('travi_cap', 'N.D.')} -> {num_tp} pz (L={ml_tp_unit:.2f} m, Tot: {ml_tp_tot:.2f} ml)")
+    
+    doc.add_paragraph("\n--- TRAVATURE DI TESTATA (Prima e ultima campata) ---")
+    num_tt = dati.get('num_travi_testata', 0)
+    ml_tt_tot = num_tt * ml_tp_unit
+    doc.add_paragraph(f"Legno: {dati.get('travi_testata_legno', 'N.D.')} -> {num_tt} pz (L={ml_tp_unit:.2f} m, Tot: {ml_tt_tot:.2f} ml)")
+    doc.add_paragraph(f"Acciaio: {dati.get('travi_testata_acciaio', 'N.D.')} -> {num_tt} pz (L={ml_tp_unit:.2f} m, Tot: {ml_tt_tot:.2f} ml)")
         
-    doc.add_paragraph("--- PILASTRI TELAIO PRINCIPALE ---")
-    doc.add_paragraph(f"Sviluppo pilastri perimetrali: L = {dati.get('altezza_gronda', 0.0):.2f} m")
-    if dati.get('num_appoggi', 3) > 2:
-        doc.add_paragraph(f"Legno: Perimetrali [{dati.get('pilastri_perimetrali_legno')}] | Intermedi [{dati.get('pilastri_intermedi_legno')}]")
-        doc.add_paragraph(f"Acciaio: Perimetrali [{dati.get('pilastri_perimetrali_acciaio')}] | Intermedi [{dati.get('pilastri_intermedi_acciaio')}]")
-        doc.add_paragraph(f"C.a.p.: Perimetrali [{dati.get('pilastri_perimetrali_cap')}] | Intermedi [{dati.get('pilastri_intermedi_cap')}]")
-    else:
-        doc.add_paragraph(f"Legno: Perimetrali [{dati.get('pilastri_perimetrali_legno')}]")
-        doc.add_paragraph(f"Acciaio: Perimetrali [{dati.get('pilastri_perimetrali_acciaio')}]")
-        doc.add_paragraph(f"C.a.p.: Perimetrali [{dati.get('pilastri_perimetrali_cap')}]")
+    doc.add_paragraph("\n--- PILASTRI TELAIO PRINCIPALE ---")
+    ml_pil_perim_unit = dati.get('ml_pilastro_perim', 0.0)
+    num_pil_per_princ = dati.get('num_pilastri_perim_principali', 0)
+    num_pil_per_test = dati.get('num_pilastri_perim_testata', 0)
+    tot_perim = num_pil_per_princ + num_pil_per_test
+    ml_perim_tot = tot_perim * ml_pil_perim_unit
+    
+    doc.add_paragraph(f"Pilastri Perimetrali (Sviluppo: L = {ml_pil_perim_unit:.2f} m):")
+    doc.add_paragraph(f"Legno: {dati.get('pilastri_perimetrali_legno')} -> {tot_perim} pz (Tot: {ml_perim_tot:.2f} ml)")
+    doc.add_paragraph(f"Acciaio: {dati.get('pilastri_perimetrali_acciaio')} -> {tot_perim} pz (Tot: {ml_perim_tot:.2f} ml)")
+    doc.add_paragraph(f"C.a.p.: {dati.get('pilastri_perimetrali_cap')} -> {tot_perim} pz (Tot: {ml_perim_tot:.2f} ml)")
 
-    doc.add_paragraph("--- PILASTRI SECONDARI (TESTATE) ---")
-    doc.add_paragraph(f"Legno: {dati.get('montante_sezione_legno', 'N.D.')}")
-    doc.add_paragraph(f"Acciaio: {dati.get('montante_sezione_acciaio', 'N.D.')}")
-    doc.add_paragraph(f"C.a.p.: {dati.get('montante_sezione_cap', 'N.D.')}")
+    if dati.get('num_appoggi', 3) > 2:
+        doc.add_paragraph("\nPilastri Intermedi Telaio (Allineamento appoggi):")
+        num_pil_int_princ = dati.get('num_pilastri_interm_principali', 0)
+        num_pil_int_test = dati.get('num_pilastri_interm_testata', 0)
+        tot_interm = num_pil_int_princ + num_pil_int_test
+        # Altezza media approssimata per pilastri intermedi: prendiamo h_colmo come cautela, o una media.
+        ml_interm_media = dati.get('altezza_colmo', 0.0) 
+        ml_interm_tot = tot_interm * ml_interm_media
+        doc.add_paragraph(f"Legno: {dati.get('pilastri_intermedi_legno')} -> {tot_interm} pz (h media ~{ml_interm_media:.2f} m, Tot: {ml_interm_tot:.2f} ml)")
+        doc.add_paragraph(f"Acciaio: {dati.get('pilastri_intermedi_acciaio')} -> {tot_interm} pz (h media ~{ml_interm_media:.2f} m, Tot: {ml_interm_tot:.2f} ml)")
+        doc.add_paragraph(f"C.a.p.: {dati.get('pilastri_intermedi_cap')} -> {tot_interm} pz (h media ~{ml_interm_media:.2f} m, Tot: {ml_interm_tot:.2f} ml)")
+
+    doc.add_paragraph("\n--- PILASTRI SECONDARI / MONTANTI DI TESTATA ---")
+    num_mont_testata_tot = dati.get('num_montanti_timpano_singolo', 0) * 2
+    ml_mont_testata_tot = dati.get('ml_tot_timpani_entrambe', 0.0)
+    
+    doc.add_paragraph(f"Legno: {dati.get('montante_sezione_legno', 'N.D.')} -> {num_mont_testata_tot} pz (Tot: {ml_mont_testata_tot:.2f} ml)")
+    doc.add_paragraph(f"Acciaio: {dati.get('montante_sezione_acciaio', 'N.D.')} -> {num_mont_testata_tot} pz (Tot: {ml_mont_testata_tot:.2f} ml)")
+    doc.add_paragraph(f"C.a.p.: {dati.get('montante_sezione_cap', 'N.D.')} -> {num_mont_testata_tot} pz (Tot: {ml_mont_testata_tot:.2f} ml)")
+    
     sviluppi_testata = dati.get('ml_per_montante_timpano', [])
     if sviluppi_testata:
-        doc.add_paragraph(f"Sviluppo singoli pilastri di testata (1 facciata): {', '.join(f'{x:.2f} m' for x in sviluppi_testata)}")
+        doc.add_paragraph(f"Sviluppi singoli per lato: {', '.join(f'{x:.2f} m' for x in sviluppi_testata)}")
     
     doc.add_heading('6. Connessioni, Nodi e Dettagli d’Ancoraggio', level=1)
     doc.add_paragraph(f"Nodo Trave-Pilastro: {dati.get('conn_trave_pilastro_tipo')} | Perimetrali: {dati.get('conn_trave_pilastro_perim_elementi')} ({dati.get('conn_trave_pilastro_perim_kg')})")
@@ -1285,7 +1375,7 @@ def esegui_calcolo_carport(dati):
             z_t2 = h_fr_eff - ((h_fr_eff - h_tr_eff) * (x_t2 / w))
         else:
             z_t1 = h_tr_eff + ((h_fr_eff - h_tr_eff) * (x_t1 / w))
-            z_t2 = h_tr_eff + ((h_fr_eff - h_tr_eff) * (x_t2 / w))
+            z_t2 = h_tr_eff + ((h_first - h_tr_eff) * (x_t2 / w))
             
         L_cant_back = x_t1
         L_cant_front = w - x_t2
@@ -1883,61 +1973,88 @@ with tab_principale:
 
         st.markdown("---")
         st.markdown("### 📐 5. Struttura Principale / Travatura (Dimensionamento)")
+        
+        num_tp = dati.get('num_travi_principali', 0)
+        num_tt = dati.get('num_travi_testata', 0)
+        ml_tp_unit = dati.get('ml_trave_singola', 0.0)
+        
+        st.markdown(f"#### 🔹 Travature Principali Interne (N° {num_tp} pz - {ml_tp_unit:.2f} ml/cad)")
         if dati.get('categoria_struttura') in ["Capriate", "Travi Reticolari"]:
             col_t1, col_t2 = st.columns(2)
             with col_t1:
-                st.markdown("#### 🌲 Variante in Legno")
+                st.markdown("##### 🌲 Variante in Legno")
                 st.success(dati.get('travi_legno', 'N.D.').replace('\n', '  \n'))
             with col_t2:
-                st.markdown("#### ⚙️ Variante in Acciaio")
+                st.markdown("##### ⚙️ Variante in Acciaio")
                 st.warning(dati.get('travi_acciaio', 'N.D.').replace('\n', '  \n'))
         else:
             col_t1, col_t2, col_t3 = st.columns(3)
             with col_t1:
-                st.markdown("#### 🌲 Legno Lamellare")
+                st.markdown("##### 🌲 Legno Lamellare")
                 st.success(dati.get('travi_legno', 'N.D.'))
             with col_t2:
-                st.markdown("#### ⚙️ Acciaio")
+                st.markdown("##### ⚙️ Acciaio")
                 st.warning(dati.get('travi_acciaio', 'N.D.'))
             with col_t3:
-                st.markdown("#### 🏛️ C.a.p.")
+                st.markdown("##### 🏛️ C.a.p.")
                 st.error(dati.get('travi_cap', 'N.D.'))
+
+        st.markdown(f"#### 🔹 Travature di Falda di Testata (N° {num_tt} pz - {ml_tp_unit:.2f} ml/cad)")
+        st.write("*Sezione ottimizzata per carichi dimezzati e luce ridotta dai montanti intermedi*")
+        col_tt1, col_tt2 = st.columns(2)
+        with col_tt1:
+            st.markdown("##### 🌲 Legno Lamellare")
+            st.success(dati.get('travi_testata_legno', 'N.D.'))
+        with col_tt2:
+            st.markdown("##### ⚙️ Acciaio")
+            st.warning(dati.get('travi_testata_acciaio', 'N.D.'))
         
         st.markdown("---")
         st.markdown("### 🏛️ 6. Pilastri Strutturali")
         
-        st.markdown(f"#### 🏗️ Pilastri del Telaio Principale (Sviluppo perimetrali: L = {dati.get('altezza_gronda', 0.0):.2f} m)")
+        ml_pil_perim_unit = dati.get('ml_pilastro_perim', 0.0)
+        num_pil_per_princ = dati.get('num_pilastri_perim_principali', 0)
+        num_pil_per_test = dati.get('num_pilastri_perim_testata', 0)
+        tot_perim = num_pil_per_princ + num_pil_per_test
+        
+        st.markdown(f"#### 🏗️ Pilastri Perimetrali (N° {tot_perim} pz - Sviluppo unitario: L = {ml_pil_perim_unit:.2f} m)")
         col_p1, col_p2, col_p3 = st.columns(3)
         with col_p1:
             st.markdown("##### 🌲 Legno Lamellare")
-            if dati.get('num_appoggi', 3) > 2:
-                st.success(f"**Perimetrali:** {dati.get('pilastri_perimetrali_legno', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_legno', 'N.D.')}")
-            else:
-                st.success(f"**Perimetrali:** {dati.get('pilastri_perimetrali_legno', 'N.D.')}")
+            st.success(f"{dati.get('pilastri_perimetrali_legno', 'N.D.')}")
         with col_p2:
             st.markdown("##### ⚙️ Acciaio")
-            if dati.get('num_appoggi', 3) > 2:
-                st.warning(f"**Perimetrali:** {dati.get('pilastri_perimetrali_acciaio', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_acciaio', 'N.D.')}")
-            else:
-                st.warning(f"**Perimetrali:** {dati.get('pilastri_perimetrali_acciaio', 'N.D.')}")
+            st.warning(f"{dati.get('pilastri_perimetrali_acciaio', 'N.D.')}")
         with col_p3:
             st.markdown("##### 🏛️ C.a.p.")
-            if dati.get('num_appoggi', 3) > 2:
-                st.error(f"**Perimetrali:** {dati.get('pilastri_perimetrali_cap', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_cap', 'N.D.')}")
-            else:
-                st.error(f"**Perimetrali:** {dati.get('pilastri_perimetrali_cap', 'N.D.')}")
+            st.error(f"{dati.get('pilastri_perimetrali_cap', 'N.D.')}")
             
-        st.markdown("#### 🧱 Pilastri Secondari (di Testata / Antivento)")
+        if dati.get('num_appoggi', 3) > 2:
+            num_pil_int_princ = dati.get('num_pilastri_interm_principali', 0)
+            num_pil_int_test = dati.get('num_pilastri_interm_testata', 0)
+            tot_interm = num_pil_int_princ + num_pil_int_test
+            st.markdown(f"#### 🏗️ Pilastri Intermedi (N° {tot_interm} pz - in asse con gli appoggi telaio)")
+            col_pi1, col_pi2, col_pi3 = st.columns(3)
+            with col_pi1:
+                st.success(f"{dati.get('pilastri_intermedi_legno', 'N.D.')}")
+            with col_pi2:
+                st.warning(f"{dati.get('pilastri_intermedi_acciaio', 'N.D.')}")
+            with col_pi3:
+                st.error(f"{dati.get('pilastri_intermedi_cap', 'N.D.')}")
+
+        num_mont_testata_tot = dati.get('num_montanti_timpano_singolo', 0) * 2
+        ml_mont_testata_tot = dati.get('ml_tot_timpani_entrambe', 0.0)
+        st.markdown(f"#### 🧱 Pilastri Secondari / Montanti di Testata (N° {num_mont_testata_tot} pz)")
         sviluppi_testata = dati.get('ml_per_montante_timpano', [])
         if sviluppi_testata:
-            st.info(f"**Sviluppo singoli pilastri di testata (per facciata):** {', '.join(f'{x:.2f} m' for x in sviluppi_testata)}")
+            st.info(f"**Sviluppi singoli per lato:** {', '.join(f'{x:.2f} m' for x in sviluppi_testata)}\n**(Totale: {ml_mont_testata_tot:.2f} ml)**")
         col_ps1, col_ps2, col_ps3 = st.columns(3)
         with col_ps1:
-            st.success(f"**Sezione:** {dati.get('montante_sezione_legno', 'N.D.')}")
+            st.success(f"**Sezione Legno:** {dati.get('montante_sezione_legno', 'N.D.')}")
         with col_ps2:
-            st.warning(f"**Profilo:** {dati.get('montante_sezione_acciaio', 'N.D.')}")
+            st.warning(f"**Profilo Acciaio:** {dati.get('montante_sezione_acciaio', 'N.D.')}")
         with col_ps3:
-            st.error(f"**Prefabbricato:** {dati.get('montante_sezione_cap', 'N.D.')}")
+            st.error(f"**Prefabbricato C.a.p.:** {dati.get('montante_sezione_cap', 'N.D.')}")
         
         st.markdown("---")
         st.markdown("### 🔗 7. Stabilizzazione e Controventi")
