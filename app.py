@@ -20,7 +20,7 @@ def azzera_dati(modulo="tutto"):
     defaults_principale = {
         'maps_url_ui': "", 'comune_cantiere_ui': "", 'lunghezza_edificio_ui': 25.0,
         'interasse_portali_ui': 5.0, 'luce_totale_ui': 39.6, 'altezza_gronda_ui': 9.0,
-        'altezza_colmo_ui': 12.21, 'cat_strutt': "Portali ad anima piena",
+        'inclinazione_gradi_ui': 10.0, 'tipo_copertura_ui': "Bi-falda", 'cat_strutt': "Portali ad anima piena",
         'tipo_travatura': "Bi-falda semplice", 'num_appoggi': 3,
         'pos_arcarecci': "Sopra i telai (Continuo)", 'tipo_isolante': "PIR / PUR",
         'spessore_panni_pir': 50, 'spessore_panni_lana': 100, 'impianto_fv': False,
@@ -317,6 +317,7 @@ def esegui_calcolo_deterministico(dati_geo):
     lunghezza_edificio = dati_geo['lunghezza_edificio']
     pos_arcarecci = dati_geo.get('posizione_arcarecci', 'Sopra i telai')
     
+    tipo_copertura = dati_geo.get('tipo_copertura', 'Bi-falda')
     categoria_struttura = dati_geo.get('categoria_struttura', 'Portali ad anima piena')
     tipo_travatura = dati_geo.get('tipo_travatura', 'Bi-falda semplice')
     
@@ -345,7 +346,11 @@ def esegui_calcolo_deterministico(dati_geo):
     elif "80" in spessore_cop or "100" in spessore_cop: max_passo_arc = 2.5
     else: max_passo_arc = 3.0
     
-    sviluppo_falda = math.sqrt((luce_totale/2)**2 + (h_colmo - h_gronda)**2)
+    if tipo_copertura == "Mono-falda":
+        sviluppo_falda = math.sqrt((luce_totale)**2 + (h_colmo - h_gronda)**2)
+    else:
+        sviluppo_falda = math.sqrt((luce_totale/2)**2 + (h_colmo - h_gronda)**2)
+        
     num_campi_falda = math.ceil(sviluppo_falda / max_passo_arc)
     passo_arcarecci = sviluppo_falda / num_campi_falda if num_campi_falda > 0 else max_passo_arc
 
@@ -566,10 +571,13 @@ def esegui_calcolo_deterministico(dati_geo):
             x_start = c * luce_campata
             for m in range(1, num_montanti_per_campata_timpano + 1):
                 x_m = x_start + m * passo_montanti_timpano
-                if x_m <= luce_totale / 2:
-                    h_m = h_gronda + (h_colmo - h_gronda) * (x_m / (luce_totale / 2))
+                if tipo_copertura == "Mono-falda":
+                    h_m = h_gronda + (h_colmo - h_gronda) * (x_m / luce_totale)
                 else:
-                    h_m = h_colmo - (h_colmo - h_gronda) * ((x_m - luce_totale / 2) / (luce_totale / 2))
+                    if x_m <= luce_totale / 2:
+                        h_m = h_gronda + (h_colmo - h_gronda) * (x_m / (luce_totale / 2))
+                    else:
+                        h_m = h_colmo - (h_colmo - h_gronda) * ((x_m - luce_totale / 2) / (luce_totale / 2))
                 ml_tot_montanti_timpano += h_m
                 ml_per_montante_timpano.append(round(h_m, 2))
     ml_tot_timpani_entrambe = ml_tot_montanti_timpano * 2
@@ -648,31 +656,42 @@ def calcola_distinta_elementi(dati):
     i_portali = dati['interasse_portali']
     n_appoggi = dati['num_appoggi']
     i_arcarecci = dati.get('passo_arcarecci_calc', 1.5)
+    tipo_copertura = dati.get('tipo_copertura', 'Bi-falda')
 
     num_campate = max(1, int(round(L / i_portali))) if i_portali > 0 else 1
     num_telai = num_campate + 1
     num_pilastri_totali = num_telai * n_appoggi
     num_pilastri_perimetrali = num_telai * 2
     num_pilastri_interni = num_pilastri_totali - num_pilastri_perimetrali
-    num_travi_falda = num_telai * 2 
-
-    half_luce = B / 2.0
-    num_file_arcarecci = (math.ceil(math.sqrt((half_luce)**2 + (dati['altezza_colmo'] - dati['altezza_gronda'])**2) / i_arcarecci) * 2) - 1
-    ml_arcarecci = num_file_arcarecci * L
+    num_travi_falda = num_telai * (1 if tipo_copertura == "Mono-falda" else 2) 
 
     campate_cv = [0, num_campate - 1]
     num_campate_cv = sum(1 for idx in campate_cv if 0 <= idx < num_campate)
-    num_sub_falda = max(1, int(round(half_luce / 5.0)))
-    num_croci_cop = num_campate_cv * (num_sub_falda * 2) 
     
     h_gronda = dati['altezza_gronda']
+
+    if tipo_copertura == "Mono-falda":
+        sviluppo_falda = math.sqrt(B**2 + (dati['altezza_colmo'] - h_gronda)**2)
+        num_file_arcarecci = max(2, math.ceil(sviluppo_falda / i_arcarecci) + 1)
+        mq_copertura = L * sviluppo_falda
+        num_sub_falda = max(1, int(round(B / 5.0)))
+        num_croci_cop = num_campate_cv * num_sub_falda
+        mq_timpani = 2 * (B * h_gronda + (B * (dati['altezza_colmo'] - h_gronda) / 2))
+    else:
+        half_luce = B / 2.0
+        sviluppo_falda = math.sqrt((half_luce)**2 + (dati['altezza_colmo'] - h_gronda)**2)
+        num_file_arcarecci = (math.ceil(sviluppo_falda / i_arcarecci) * 2) - 1
+        mq_copertura = L * sviluppo_falda * 2
+        num_sub_falda = max(1, int(round(half_luce / 5.0)))
+        num_croci_cop = num_campate_cv * (num_sub_falda * 2) 
+        mq_timpani = 2 * (B * h_gronda + (B * (dati['altezza_colmo'] - h_gronda) / 2))
+
+    ml_arcarecci = num_file_arcarecci * L
+    
     num_sub_parete = max(1, int(round(h_gronda / 4.5))) if h_gronda > 0 else 1
     num_croci_par = num_campate_cv * (num_sub_parete * 2) 
 
-    sviluppo_falda = ((B/2)**2 + (dati['altezza_colmo'] - h_gronda)**2)**0.5
-    mq_copertura = L * sviluppo_falda * 2
     mq_pareti_lunghe = L * h_gronda * 2 
-    mq_timpani = 2 * (B * h_gronda + (B * (dati['altezza_colmo'] - h_gronda) / 2))
     
     tot_montanti_timpani = dati.get('num_montanti_timpano_singolo', 0) * 2
     tot_montanti_longitudinali = dati.get('num_montanti_long_singola_parete', 0) * 2
@@ -702,8 +721,12 @@ def calcola_logistica_trasporti(dati, distinta):
     num_pilastri = distinta['num_pilastri_totali']
     num_travi_falda = distinta['num_travi_falda']
     categoria_struttura = dati.get('categoria_struttura', 'Portali ad anima piena')
+    tipo_copertura = dati.get('tipo_copertura', 'Bi-falda')
     
-    sviluppo_falda = math.sqrt((luce/2)**2 + (h_colmo - h_gronda)**2)
+    if tipo_copertura == "Mono-falda":
+        sviluppo_falda = math.sqrt(luce**2 + (h_colmo - h_gronda)**2)
+    else:
+        sviluppo_falda = math.sqrt((luce/2)**2 + (h_colmo - h_gronda)**2)
 
     if categoria_struttura == "Portali ad anima piena":
         max_lunghezza_trave = sviluppo_falda
@@ -772,16 +795,16 @@ def genera_word_report(dati, distinta, logistica):
     doc.add_paragraph(f"Zona Vento: {dati.get('zona_vento', 'N.D.')} | Pressione: {dati.get('pressione_vento', 'N.D.')}")
     doc.add_paragraph(f"Azione Sismica: {dati.get('zona_sismica', 'N.D.')}")
     doc.add_paragraph(f"Dimensioni Edificio: Lunghezza {dati.get('lunghezza_edificio', 0.0)} m | Larghezza {dati.get('luce_totale', 0.0)} m")
-    doc.add_paragraph(f"Altezze: Gronda {dati.get('altezza_gronda', 0.0)} m | Colmo {dati.get('altezza_colmo', 0.0)} m")
+    doc.add_paragraph(f"Altezze: Gronda {dati.get('altezza_gronda', 0.0)} m | Inclinazione {dati.get('inclinazione_gradi', 0.0)}° (Colmo calc. {dati.get('altezza_colmo', 0.0):.2f} m)")
     doc.add_paragraph(f"Interasse Portali: {dati.get('interasse_portali', 0.0)} m -> N. Campate: {dati.get('num_campate', 0)}")
-    doc.add_paragraph(f"Categoria Struttura: {dati.get('categoria_struttura', 'N.D.')} | Tipologia: {dati.get('tipo_travatura', 'N.D.')}")
+    doc.add_paragraph(f"Categoria Struttura: {dati.get('categoria_struttura', 'N.D.')} | Copertura: {dati.get('tipo_copertura', 'Bi-falda')} | Tipologia: {dati.get('tipo_travatura', 'N.D.')}")
     
     doc.add_heading('2. Distinta Elementi Principali (Computo Quantità)', level=1)
     doc.add_paragraph(f"Numero Telai Principali: {distinta['num_telai']}")
     doc.add_paragraph(f"Numero Pilastri Totali: {distinta['num_pilastri_totali']} (di cui {distinta['num_pilastri_perimetrali']} perimetrali e {distinta['num_pilastri_interni']} intermedi)")
     doc.add_paragraph(f"Numero Travi di Falda: {distinta['num_travi_falda']}")
     doc.add_paragraph(f"File di Arcarecci: {distinta['num_file_arcarecci']} file | Metri Lineari: {distinta['ml_arcarecci']} ml")
-    doc.add_paragraph(f"Superficie Copertura: {distinta['mq_copertura']} mq | Pareti: {distinta['mq_pareti_lunghe']} mq | Timpani: {distinta['mq_timpani']} mq")
+    doc.add_paragraph(f"Superficie Copertura: {distinta['mq_copertura']:.1f} mq | Pareti: {distinta['mq_pareti_lunghe']:.1f} mq | Timpani: {distinta['mq_timpani']:.1f} mq")
 
     doc.add_heading('3. Piano Logistico e Calcolo Viaggi di Trasporto (Flotta Veneta Trasporti)', level=1)
     doc.add_paragraph(f"Numero Viaggi Totali Stimati: {logistica['tot_viaggi']} viaggi")
@@ -845,6 +868,7 @@ def genera_modello_3d(dati):
     num_appoggi = dati.get('num_appoggi', 3)
     categoria_struttura = dati.get('categoria_struttura', 'Portali ad anima piena')
     tipo_travatura = dati.get('tipo_travatura', 'Bi-falda semplice')
+    tipo_copertura = dati.get('tipo_copertura', 'Bi-falda')
     interasse_arcarecci = dati.get('passo_arcarecci_calc', 1.5)
     
     num_campate = max(1, int(round(lunghezza_edificio / interasse_portali))) if interasse_portali > 0 else 1
@@ -856,7 +880,14 @@ def genera_modello_3d(dati):
         
     for idx_y, y in enumerate(y_portali):
         for idx_x, x in enumerate(x_pilastri):
-            h_p = altezza_gronda if (x == 0.0 or x == luce_totale) else altezza_colmo
+            if tipo_copertura == "Mono-falda":
+                h_p = altezza_gronda + (altezza_colmo - altezza_gronda) * (x / luce_totale)
+            else:
+                if x <= luce_totale/2:
+                    h_p = altezza_gronda + (altezza_colmo - altezza_gronda) * (x / (luce_totale/2))
+                else:
+                    h_p = altezza_colmo - (altezza_colmo - altezza_gronda) * ((x - luce_totale/2) / (luce_totale/2))
+            
             show_leg = (idx_y == 0 and idx_x == 0)
             fig.add_trace(go.Scatter3d(x=[x, x], y=[y, y], z=[0, h_p], mode='lines', line=dict(color='darkblue', width=6), name='Pilastri' if show_leg else '', showlegend=show_leg))
         
@@ -907,7 +938,10 @@ def genera_modello_3d(dati):
                         fig.add_trace(go.Scatter3d(x=[x1, x2], y=[y, y], z=[z1_sup, altezza_gronda], mode='lines', line=dict(color='darkslategray', width=3), showlegend=False))
 
         else:
-            fig.add_trace(go.Scatter3d(x=[0, luce_totale/2, luce_totale], y=[y, y, y], z=[altezza_gronda, altezza_colmo, altezza_gronda], mode='lines', line=dict(color='firebrick', width=6), name='Travi di Falda' if show_leg_trave else '', showlegend=show_leg_trave))
+            if tipo_copertura == "Mono-falda":
+                fig.add_trace(go.Scatter3d(x=[0, luce_totale], y=[y, y], z=[altezza_gronda, altezza_colmo], mode='lines', line=dict(color='firebrick', width=6), name='Trave di Falda' if show_leg_trave else '', showlegend=show_leg_trave))
+            else:
+                fig.add_trace(go.Scatter3d(x=[0, luce_totale/2, luce_totale], y=[y, y, y], z=[altezza_gronda, altezza_colmo, altezza_gronda], mode='lines', line=dict(color='firebrick', width=6), name='Travi di Falda' if show_leg_trave else '', showlegend=show_leg_trave))
 
     passo_mont_timpano = dati.get('passo_montanti_timpano', 0)
     num_mont_camp_timpano = int(dati.get('num_montanti_timpano_singolo', 0) / max(1, num_appoggi - 1))
@@ -920,7 +954,10 @@ def genera_modello_3d(dati):
                     
         for y_fac in [0, y_portali[-1]]:
             for idx_m, xm in enumerate(x_montanti_timpano):
-                zm = altezza_gronda + (altezza_colmo - altezza_gronda) * (xm / (luce_totale / 2)) if xm <= luce_totale / 2 else altezza_colmo - (altezza_colmo - altezza_gronda) * ((xm - luce_totale / 2) / (luce_totale / 2))
+                if tipo_copertura == "Mono-falda":
+                    zm = altezza_gronda + (altezza_colmo - altezza_gronda) * (xm / luce_totale)
+                else:
+                    zm = altezza_gronda + (altezza_colmo - altezza_gronda) * (xm / (luce_totale / 2)) if xm <= luce_totale / 2 else altezza_colmo - (altezza_colmo - altezza_gronda) * ((xm - luce_totale / 2) / (luce_totale / 2))
                 show_leg_mont_timp = (y_fac == 0 and idx_m == 0)
                 fig.add_trace(go.Scatter3d(x=[xm, xm], y=[y_fac, y_fac], z=[0, zm], mode='lines', line=dict(color='cadetblue', width=4), name='Montanti Timpano' if show_leg_mont_timp else '', showlegend=show_leg_mont_timp))
 
@@ -938,29 +975,39 @@ def genera_modello_3d(dati):
                 show_leg_mont_long = (x_wall == 0 and idx_m == 0)
                 fig.add_trace(go.Scatter3d(x=[x_wall, x_wall], y=[ym, ym], z=[0, altezza_gronda], mode='lines', line=dict(color='teal', width=4), name='Montanti Longitudinali' if show_leg_mont_long else '', showlegend=show_leg_mont_long))
 
-    half_luce = luce_totale / 2.0
-    x_arc_left = []
-    curr = 0.0
-    while curr <= half_luce - 1e-5:
-        x_arc_left.append(curr)
-        curr += interasse_arcarecci
-    if not x_arc_left or abs(x_arc_left[-1] - half_luce) > 1e-5: x_arc_left.append(half_luce)
+    if tipo_copertura == "Mono-falda":
+        x_arc_list = []
+        curr = 0.0
+        while curr <= luce_totale - 1e-5:
+            x_arc_list.append(curr)
+            curr += interasse_arcarecci
+        if not x_arc_list or abs(x_arc_list[-1] - luce_totale) > 1e-5: x_arc_list.append(luce_totale)
         
-    for idx_x, x_val in enumerate(x_arc_left):
-        z_val = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_val / half_luce)
-        show_leg_arc = (idx_x == 0)
-        fig.add_trace(go.Scatter3d(x=[x_val, x_val], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val], mode='lines', line=dict(color='gray', width=2, dash='dot'), name='Arcarecci' if show_leg_arc else '', showlegend=show_leg_arc))
-        if x_val < half_luce - 1e-5:
-            x_right = luce_totale - x_val
-            fig.add_trace(go.Scatter3d(x=[x_right, x_right], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val], mode='lines', line=dict(color='gray', width=2, dash='dot'), showlegend=False))
+        for idx_x, x_val in enumerate(x_arc_list):
+            z_val = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_val / luce_totale)
+            show_leg_arc = (idx_x == 0)
+            fig.add_trace(go.Scatter3d(x=[x_val, x_val], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val], mode='lines', line=dict(color='gray', width=2, dash='dot'), name='Arcarecci' if show_leg_arc else '', showlegend=show_leg_arc))
+    else:
+        half_luce = luce_totale / 2.0
+        x_arc_left = []
+        curr = 0.0
+        while curr <= half_luce - 1e-5:
+            x_arc_left.append(curr)
+            curr += interasse_arcarecci
+        if not x_arc_left or abs(x_arc_left[-1] - half_luce) > 1e-5: x_arc_left.append(half_luce)
+            
+        for idx_x, x_val in enumerate(x_arc_left):
+            z_val = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_val / half_luce)
+            show_leg_arc = (idx_x == 0)
+            fig.add_trace(go.Scatter3d(x=[x_val, x_val], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val], mode='lines', line=dict(color='gray', width=2, dash='dot'), name='Arcarecci' if show_leg_arc else '', showlegend=show_leg_arc))
+            if x_val < half_luce - 1e-5:
+                x_right = luce_totale - x_val
+                fig.add_trace(go.Scatter3d(x=[x_right, x_right], y=[y_portali[0], y_portali[-1]], z=[z_val, z_val], mode='lines', line=dict(color='gray', width=2, dash='dot'), showlegend=False))
 
     raw_indici = dati.get('campate_controventi_indici', [0, num_campate - 1])
     if isinstance(raw_indici, list): campate_controventi = [int(i) for i in raw_indici if isinstance(i, (int, float))]
     else: campate_controventi = [0, num_campate - 1]
 
-    num_sub_falda = max(1, int(round(half_luce / 5.0)))
-    num_sub_parete = max(1, int(round(altezza_gronda / 4.5))) if altezza_gronda > 0 else 1
-    
     for idx in campate_controventi:
         if 0 <= idx < num_campate:
             y_start = y_portali[idx]
@@ -968,19 +1015,32 @@ def genera_modello_3d(dati):
             show_leg_cv_cop = (idx == campate_controventi[0])
             show_leg_cv_par = (idx == campate_controventi[0])
             
-            dx_falda = half_luce / num_sub_falda
-            for s in range(num_sub_falda):
-                x_s1 = s * dx_falda
-                x_s2 = (s + 1) * dx_falda
-                z_s1 = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_s1 / half_luce)
-                z_s2 = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_s2 / half_luce)
-                
-                fig.add_trace(go.Scatter3d(x=[x_s1, x_s2, None, x_s1, x_s2], y=[y_start, y_end, None, y_end, y_start], z=[z_s1, z_s2, None, z_s1, z_s2], mode='lines', line=dict(color='forestgreen', width=4), name='Controventi Copertura' if (show_leg_cv_cop and s == 0) else '', showlegend=(show_leg_cv_cop and s == 0)))
-                
-                xr_s1 = luce_totale - x_s1
-                xr_s2 = luce_totale - x_s2
-                fig.add_trace(go.Scatter3d(x=[xr_s1, xr_s2, None, xr_s1, xr_s2], y=[y_start, y_end, None, y_end, y_start], z=[z_s1, z_s2, None, z_s1, z_s2], mode='lines', line=dict(color='forestgreen', width=4), showlegend=False))
+            if tipo_copertura == "Mono-falda":
+                num_sub_falda = max(1, int(round(luce_totale / 5.0)))
+                dx_falda = luce_totale / num_sub_falda
+                for s in range(num_sub_falda):
+                    x_s1 = s * dx_falda
+                    x_s2 = (s + 1) * dx_falda
+                    z_s1 = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_s1 / luce_totale)
+                    z_s2 = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_s2 / luce_totale)
+                    
+                    fig.add_trace(go.Scatter3d(x=[x_s1, x_s2, None, x_s1, x_s2], y=[y_start, y_end, None, y_end, y_start], z=[z_s1, z_s2, None, z_s1, z_s2], mode='lines', line=dict(color='forestgreen', width=4), name='Controventi Copertura' if (show_leg_cv_cop and s == 0) else '', showlegend=(show_leg_cv_cop and s == 0)))
+            else:
+                num_sub_falda = max(1, int(round((luce_totale / 2.0) / 5.0)))
+                dx_falda = (luce_totale / 2.0) / num_sub_falda
+                for s in range(num_sub_falda):
+                    x_s1 = s * dx_falda
+                    x_s2 = (s + 1) * dx_falda
+                    z_s1 = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_s1 / (luce_totale / 2.0))
+                    z_s2 = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_s2 / (luce_totale / 2.0))
+                    
+                    fig.add_trace(go.Scatter3d(x=[x_s1, x_s2, None, x_s1, x_s2], y=[y_start, y_end, None, y_end, y_start], z=[z_s1, z_s2, None, z_s1, z_s2], mode='lines', line=dict(color='forestgreen', width=4), name='Controventi Copertura' if (show_leg_cv_cop and s == 0) else '', showlegend=(show_leg_cv_cop and s == 0)))
+                    
+                    xr_s1 = luce_totale - x_s1
+                    xr_s2 = luce_totale - x_s2
+                    fig.add_trace(go.Scatter3d(x=[xr_s1, xr_s2, None, xr_s1, xr_s2], y=[y_start, y_end, None, y_end, y_start], z=[z_s1, z_s2, None, z_s1, z_s2], mode='lines', line=dict(color='forestgreen', width=4), showlegend=False))
             
+            num_sub_parete = max(1, int(round(altezza_gronda / 4.5))) if altezza_gronda > 0 else 1
             dz_parete = altezza_gronda / num_sub_parete
             for x_wall in [0.0, luce_totale]:
                 for t in range(num_sub_parete):
@@ -990,7 +1050,7 @@ def genera_modello_3d(dati):
 
     fig.update_layout(
         title=f"Modello 3D Dinamico ({num_campate} Campate, {num_campate+1} Telai - {tipo_travatura})",
-        scene=dict(xaxis_title=f'Larghezza (X - {luce_totale}m)', yaxis_title=f'Lunghezza (Y - {lunghezza_edificio}m)', zaxis_title=f'Altezza (Z - {altezza_colmo}m)', aspectmode='data'),
+        scene=dict(xaxis_title=f'Larghezza (X - {luce_totale}m)', yaxis_title=f'Lunghezza (Y - {lunghezza_edificio}m)', zaxis_title=f'Altezza (Z - {altezza_colmo:.2f}m)', aspectmode='data'),
         margin=dict(l=0, r=0, b=0, t=40), height=550
     )
     return fig
@@ -1548,18 +1608,24 @@ with tab_principale:
     with col_dim2: interasse_portali_ui = st.number_input("Interasse Portali (m)", min_value=0.0, value=5.0, step=0.5, format="%.2f", key="interasse_portali_ui")
     with col_dim3: luce_totale_ui = st.number_input("Luce Totale / Larghezza (m)", min_value=0.0, value=39.6, step=0.1, format="%.2f", key="luce_totale_ui")
     with col_dim4: altezza_gronda_ui = st.number_input("Altezza Gronda (m)", min_value=0.0, value=9.0, step=0.5, format="%.1f", key="altezza_gronda_ui")
-    with col_dim5: altezza_colmo_ui = st.number_input("Altezza Colmo (m)", min_value=0.0, value=12.21, step=0.01, format="%.2f", key="altezza_colmo_ui")
+    with col_dim5: inclinazione_gradi_ui = st.number_input("Inclinazione Falda (°)", min_value=1.0, max_value=45.0, value=10.0, step=0.5, format="%.1f", key="inclinazione_gradi_ui")
 
     st.markdown("### 🏛️ Configurazione Telaio e Travatura")
     col_g1, col_g2, col_g3 = st.columns(3)
     with col_g1:
-        categoria_struttura = st.selectbox("Categoria Struttura Principale", ["Portali ad anima piena", "Capriate", "Travi Reticolari"], key="cat_strutt")
-        if categoria_struttura == "Portali ad anima piena":
-            tipo_travatura = st.selectbox("Tipologia Travatura", ["Bi-falda semplice", "Bi-falda con intradosso curvo", "Trave di falda giuntata in colmo"], key="tipo_travatura")
-        elif categoria_struttura == "Capriate":
-            tipo_travatura = st.selectbox("Tipologia Capriata", ["Semplice", "Con Monaco", "Classica o alla Palladiana", "Composta o a doppia catena"], key="tipo_travatura")
+        tipo_copertura_ui = st.selectbox("Tipo di Copertura", ["Bi-falda", "Mono-falda"], key="tipo_copertura_ui")
+        if tipo_copertura_ui == "Mono-falda":
+            categoria_struttura = "Portali ad anima piena"
+            st.info("Mono-falda: Struttura vincolata a Portali ad anima piena")
+            tipo_travatura = st.selectbox("Tipologia Travatura", ["Trave di falda incernierata"], key="tipo_travatura")
         else:
-            tipo_travatura = st.selectbox("Tipologia Reticolare", ["Travatura Warren", "Travatura Long", "Travatura Howe", "Travatura Vierendeel", "Travatura Pratt"], key="tipo_travatura")
+            categoria_struttura = st.selectbox("Categoria Struttura Principale", ["Portali ad anima piena", "Capriate", "Travi Reticolari"], key="cat_strutt")
+            if categoria_struttura == "Portali ad anima piena":
+                tipo_travatura = st.selectbox("Tipologia Travatura", ["Bi-falda semplice", "Bi-falda con intradosso curvo", "Trave di falda giuntata in colmo"], key="tipo_travatura")
+            elif categoria_struttura == "Capriate":
+                tipo_travatura = st.selectbox("Tipologia Capriata", ["Semplice", "Con Monaco", "Classica o alla Palladiana", "Composta o a doppia catena"], key="tipo_travatura")
+            else:
+                tipo_travatura = st.selectbox("Tipologia Reticolare", ["Travatura Warren", "Travatura Long", "Travatura Howe", "Travatura Vierendeel", "Travatura Pratt"], key="tipo_travatura")
     with col_g2:
         num_appoggi = st.selectbox("Numero Appoggi Telaio", [2, 3, 4], index=1, format_func=lambda x: f"{x} Appoggi", key="num_appoggi")
     with col_g3:
@@ -1621,7 +1687,7 @@ with tab_principale:
         st.button("🔄 Reset Modulo", use_container_width=True, key="reset_main_btn", on_click=azzera_dati, args=("principale",))
             
     if btn_calc_principale:
-        if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or altezza_colmo_ui <= 0:
+        if lunghezza_edificio_ui <= 0 or interasse_portali_ui <= 0 or luce_totale_ui <= 0 or altezza_gronda_ui <= 0 or inclinazione_gradi_ui <= 0:
             st.warning("⚠️ Inserisci tutte le dimensioni geometriche con valori superiori a zero prima di eseguire il calcolo.")
         else:
             lat_estratta, lon_estratta, place_url = estrai_dati_da_url_maps(maps_url_ui)
@@ -1630,11 +1696,20 @@ with tab_principale:
             num_campate_calc = max(1, int(round(lunghezza_edificio_ui / interasse_portali_ui)))
             impianto_fv_desc = "Presente (20 kg/mq)" if impianto_fv else "Assente"
             
+            # Calcolo altezza colmo in base alla pendenza e tipologia falda
+            angolo_rad = math.radians(inclinazione_gradi_ui)
+            if tipo_copertura_ui == "Mono-falda":
+                altezza_colmo_calc = altezza_gronda_ui + luce_totale_ui * math.tan(angolo_rad)
+            else:
+                altezza_colmo_calc = altezza_gronda_ui + (luce_totale_ui / 2.0) * math.tan(angolo_rad)
+            
             dati_base = {
                 'lunghezza_edificio': lunghezza_edificio_ui, 'interasse_portali': interasse_portali_ui,
-                'luce_totale': luce_totale_ui, 'altezza_gronda': altezza_gronda_ui, 'altezza_colmo': altezza_colmo_ui,
+                'luce_totale': luce_totale_ui, 'altezza_gronda': altezza_gronda_ui,
+                'inclinazione_gradi': inclinazione_gradi_ui, 'altezza_colmo': altezza_colmo_calc,
                 'num_campate': num_campate_calc,
-                'categoria_struttura': categoria_struttura, 'tipo_travatura': tipo_travatura, 'num_appoggi': num_appoggi,
+                'tipo_copertura': tipo_copertura_ui, 'categoria_struttura': categoria_struttura,
+                'tipo_travatura': tipo_travatura, 'num_appoggi': num_appoggi,
                 'posizione_arcarecci': posizione_arc, 'tipo_isolante': tipo_isolante,
                 'spessore_pannello': f"{spessore_pannello} mm" if tipo_isolante != "Lamiera Grecata Semplice" else "Lamiera Semplice",
                 'tipo_isolante_parete': tipo_isolante_parete,
@@ -1720,8 +1795,8 @@ with tab_principale:
         c_e5, c_e6, c_e7, c_e8 = st.columns(4)
         c_e5.metric("Moduli Controvento Cop.", f"{distinta['num_croci_copertura']} croci")
         c_e6.metric("Moduli Controvento Parete", f"{distinta['num_croci_parete']} croci")
-        c_e7.metric("Superficie Copertura", f"{distinta['mq_copertura']} mq")
-        c_e8.metric("Superficie Pareti Longitudinali", f"{distinta['mq_pareti_lunghe']} mq")
+        c_e7.metric("Superficie Copertura", f"{distinta['mq_copertura']:.1f} mq")
+        c_e8.metric("Superficie Pareti Longitudinali", f"{distinta['mq_pareti_lunghe']:.1f} mq")
 
         st.markdown("---")
         st.markdown("### 📍 2. Dati geometrici, climatici, sismici e di configurazione (NTC 2018)")
@@ -1740,7 +1815,7 @@ with tab_principale:
         c5.metric("Azione Sismica", dati.get("zona_sismica", "N.D."))
         c6.metric("Luce Totale", f"{dati.get('luce_totale')} m")
         c7.metric("Struttura Princ.", dati.get('categoria_struttura', 'N.D.'))
-        c8.metric("Tipologia Travatura", dati.get("tipo_travatura", "Bi-falda semplice"))
+        c8.metric("Tipologia Travatura", dati.get("tipo_travatura", "N.D."))
         
         st.info(f"🏗️ **Copertura configurata:** Pannello {dati.get('tipo_isolante')} ({dati.get('spessore_pannello')}) | **Impianto FV:** {dati.get('impianto_fv_desc')} | **Carico Extra:** {dati.get('carico_aggiuntivo', 0.0)} kN/mq")
         
@@ -1957,7 +2032,7 @@ with tab_xlam:
         st.success(f"📍 Località rilevata: {luogo_str_xlam}  \n🌍 Azione Sismica: **{zona_sismica_xlam}** | 💨 Vento: **{zona_vento_xlam} ({press_vento_str_xlam})**")
             
         E_mean = 11000.0  
-        f_mk = 24.0       
+        f_mk = 24.0        
         gamma_m = 1.25
         k_mod = 0.8
         f_md = f_mk * k_mod / gamma_m
