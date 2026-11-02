@@ -801,7 +801,10 @@ def genera_word_report(dati, distinta, logistica):
     
     doc.add_heading('2. Distinta Elementi Principali (Computo Quantità)', level=1)
     doc.add_paragraph(f"Numero Telai Principali: {distinta['num_telai']}")
-    doc.add_paragraph(f"Numero Pilastri Totali: {distinta['num_pilastri_totali']} (di cui {distinta['num_pilastri_perimetrali']} perimetrali e {distinta['num_pilastri_interni']} intermedi)")
+    if dati.get('num_appoggi', 3) > 2:
+        doc.add_paragraph(f"Numero Pilastri Totali: {distinta['num_pilastri_totali']} (di cui {distinta['num_pilastri_perimetrali']} perimetrali e {distinta['num_pilastri_interni']} intermedi)")
+    else:
+        doc.add_paragraph(f"Numero Pilastri Totali: {distinta['num_pilastri_totali']} (tutti perimetrali)")
     doc.add_paragraph(f"Numero Travi di Falda: {distinta['num_travi_falda']}")
     doc.add_paragraph(f"File di Arcarecci: {distinta['num_file_arcarecci']} file | Metri Lineari: {distinta['ml_arcarecci']} ml")
     doc.add_paragraph(f"Superficie Copertura: {distinta['mq_copertura']:.1f} mq | Pareti: {distinta['mq_pareti_lunghe']:.1f} mq | Timpani: {distinta['mq_timpani']:.1f} mq")
@@ -830,20 +833,31 @@ def genera_word_report(dati, distinta, logistica):
         doc.add_paragraph(f"C.a.p.: {dati.get('travi_cap', 'N.D.')}")
         
     doc.add_paragraph("--- PILASTRI TELAIO PRINCIPALE ---")
-    doc.add_paragraph(f"Legno: Perimetrali [{dati.get('pilastri_perimetrali_legno')}] | Intermedi [{dati.get('pilastri_intermedi_legno')}]")
-    doc.add_paragraph(f"Acciaio: Perimetrali [{dati.get('pilastri_perimetrali_acciaio')}] | Intermedi [{dati.get('pilastri_intermedi_acciaio')}]")
-    doc.add_paragraph(f"C.a.p.: Perimetrali [{dati.get('pilastri_perimetrali_cap')}] | Intermedi [{dati.get('pilastri_intermedi_cap')}]")
+    doc.add_paragraph(f"Sviluppo pilastri perimetrali: L = {dati.get('altezza_gronda', 0.0):.2f} m")
+    if dati.get('num_appoggi', 3) > 2:
+        doc.add_paragraph(f"Legno: Perimetrali [{dati.get('pilastri_perimetrali_legno')}] | Intermedi [{dati.get('pilastri_intermedi_legno')}]")
+        doc.add_paragraph(f"Acciaio: Perimetrali [{dati.get('pilastri_perimetrali_acciaio')}] | Intermedi [{dati.get('pilastri_intermedi_acciaio')}]")
+        doc.add_paragraph(f"C.a.p.: Perimetrali [{dati.get('pilastri_perimetrali_cap')}] | Intermedi [{dati.get('pilastri_intermedi_cap')}]")
+    else:
+        doc.add_paragraph(f"Legno: Perimetrali [{dati.get('pilastri_perimetrali_legno')}]")
+        doc.add_paragraph(f"Acciaio: Perimetrali [{dati.get('pilastri_perimetrali_acciaio')}]")
+        doc.add_paragraph(f"C.a.p.: Perimetrali [{dati.get('pilastri_perimetrali_cap')}]")
 
     doc.add_paragraph("--- PILASTRI SECONDARI (TESTATE) ---")
     doc.add_paragraph(f"Legno: {dati.get('montante_sezione_legno', 'N.D.')}")
     doc.add_paragraph(f"Acciaio: {dati.get('montante_sezione_acciaio', 'N.D.')}")
     doc.add_paragraph(f"C.a.p.: {dati.get('montante_sezione_cap', 'N.D.')}")
+    sviluppi_testata = dati.get('ml_per_montante_timpano', [])
+    if sviluppi_testata:
+        doc.add_paragraph(f"Sviluppo singoli pilastri di testata (1 facciata): {', '.join(f'{x:.2f} m' for x in sviluppi_testata)}")
     
     doc.add_heading('6. Connessioni, Nodi e Dettagli d’Ancoraggio', level=1)
     doc.add_paragraph(f"Nodo Trave-Pilastro: {dati.get('conn_trave_pilastro_tipo')} | Perimetrali: {dati.get('conn_trave_pilastro_perim_elementi')} ({dati.get('conn_trave_pilastro_perim_kg')})")
-    doc.add_paragraph(f"Nodi Intermedi: {dati.get('conn_trave_pilastro_interm_elementi')} ({dati.get('conn_trave_pilastro_interm_kg')})")
+    if dati.get('num_appoggi', 3) > 2:
+        doc.add_paragraph(f"Nodi Intermedi: {dati.get('conn_trave_pilastro_interm_elementi')} ({dati.get('conn_trave_pilastro_interm_kg')})")
     doc.add_paragraph(f"Ancoraggi di Base: {dati.get('conn_pilastro_fondazione_tipo')} | Perimetrali: {dati.get('conn_pilastro_fondazione_perim_elementi')} ({dati.get('conn_pilastro_fondazione_perim_kg')})")
-    doc.add_paragraph(f"Ancoraggi Intermedi: {dati.get('conn_pilastro_fondazione_interm_elementi')} ({dati.get('conn_pilastro_fondazione_interm_kg')})")
+    if dati.get('num_appoggi', 3) > 2:
+        doc.add_paragraph(f"Ancoraggi Intermedi: {dati.get('conn_pilastro_fondazione_interm_elementi')} ({dati.get('conn_pilastro_fondazione_interm_kg')})")
     if "giuntata" in dati.get('tipo_travatura', '').lower():
         doc.add_paragraph(f"Dettaglio Giunto in Colmo: {dati.get('dettaglio_giunto_colmo')}")
 
@@ -1491,7 +1505,7 @@ def genera_modello_3d_carport(dati):
             
         for p_idx, (xa, xb) in enumerate(pitches):
             if "Y-Doppelcarport" in forma:
-                za = h_first - ((h_first - h_trauf) * (xa / (w/2.0))) if xa <= w/2.0 else h_trauf + ((h_first - h_trauf) * ((xa - w/2.0) / (w/2.0)))
+                za = h_first - ((h_first - h_trauf) * (xa / (w/2.0))) if xa <= w/2.0 else h_trauf + ((h_first - h_trauf) * ((xb - w/2.0) / (w/2.0)))
                 zb = h_first - ((h_first - h_trauf) * (xb / (w/2.0))) if xb <= w/2.0 else h_trauf + ((h_first - h_trauf) * ((xb - w/2.0) / (w/2.0)))
             elif "fallend" in forma:
                 za = h_first - ((h_first - h_trauf) * (xa / w))
@@ -1788,7 +1802,12 @@ with tab_principale:
         st.markdown("### 📋 1. Distinta Elementi Principali (Computo Quantità)")
         c_e1, c_e2, c_e3, c_e4 = st.columns(4)
         c_e1.metric("Telai Principali", f"{distinta['num_telai']} pz")
-        c_e2.metric("Pilastri Totali", f"{distinta['num_pilastri_totali']} pz", f"{distinta['num_pilastri_perimetrali']} Per. | {distinta['num_pilastri_interni']} Intermedi", delta_color="off")
+        
+        if dati.get('num_appoggi', 3) > 2:
+            c_e2.metric("Pilastri Totali", f"{distinta['num_pilastri_totali']} pz", f"{distinta['num_pilastri_perimetrali']} Per. | {distinta['num_pilastri_interni']} Intermedi", delta_color="off")
+        else:
+            c_e2.metric("Pilastri Totali", f"{distinta['num_pilastri_totali']} pz", f"{distinta['num_pilastri_perimetrali']} Perimetrali", delta_color="off")
+            
         c_e3.metric("Travi di Falda", f"{distinta['num_travi_falda']} pz")
         c_e4.metric("File Arcarecci", f"{distinta['num_file_arcarecci']} file", f"Tot: {distinta['ml_arcarecci']} ml", delta_color="off")
 
@@ -1887,19 +1906,31 @@ with tab_principale:
         st.markdown("---")
         st.markdown("### 🏛️ 6. Pilastri Strutturali")
         
-        st.markdown("#### 🏗️ Pilastri del Telaio Principale")
+        st.markdown(f"#### 🏗️ Pilastri del Telaio Principale (Sviluppo perimetrali: L = {dati.get('altezza_gronda', 0.0):.2f} m)")
         col_p1, col_p2, col_p3 = st.columns(3)
         with col_p1:
             st.markdown("##### 🌲 Legno Lamellare")
-            st.success(f"**Perimetrali:** {dati.get('pilastri_perimetrali_legno', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_legno', 'N.D.')}")
+            if dati.get('num_appoggi', 3) > 2:
+                st.success(f"**Perimetrali:** {dati.get('pilastri_perimetrali_legno', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_legno', 'N.D.')}")
+            else:
+                st.success(f"**Perimetrali:** {dati.get('pilastri_perimetrali_legno', 'N.D.')}")
         with col_p2:
             st.markdown("##### ⚙️ Acciaio")
-            st.warning(f"**Perimetrali:** {dati.get('pilastri_perimetrali_acciaio', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_acciaio', 'N.D.')}")
+            if dati.get('num_appoggi', 3) > 2:
+                st.warning(f"**Perimetrali:** {dati.get('pilastri_perimetrali_acciaio', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_acciaio', 'N.D.')}")
+            else:
+                st.warning(f"**Perimetrali:** {dati.get('pilastri_perimetrali_acciaio', 'N.D.')}")
         with col_p3:
             st.markdown("##### 🏛️ C.a.p.")
-            st.error(f"**Perimetrali:** {dati.get('pilastri_perimetrali_cap', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_cap', 'N.D.')}")
+            if dati.get('num_appoggi', 3) > 2:
+                st.error(f"**Perimetrali:** {dati.get('pilastri_perimetrali_cap', 'N.D.')}\n\n**Intermedi:** {dati.get('pilastri_intermedi_cap', 'N.D.')}")
+            else:
+                st.error(f"**Perimetrali:** {dati.get('pilastri_perimetrali_cap', 'N.D.')}")
             
         st.markdown("#### 🧱 Pilastri Secondari (di Testata / Antivento)")
+        sviluppi_testata = dati.get('ml_per_montante_timpano', [])
+        if sviluppi_testata:
+            st.info(f"**Sviluppo singoli pilastri di testata (per facciata):** {', '.join(f'{x:.2f} m' for x in sviluppi_testata)}")
         col_ps1, col_ps2, col_ps3 = st.columns(3)
         with col_ps1:
             st.success(f"**Sezione:** {dati.get('montante_sezione_legno', 'N.D.')}")
@@ -1926,15 +1957,17 @@ with tab_principale:
             st.info(f"**Tipologia Nodo:** {dati.get('conn_trave_pilastro_tipo', 'N.D.')}")
             st.write(f"- **Nodi Perimetrali:** {dati.get('conn_trave_pilastro_perim_elementi', 'N.D.')}")
             st.metric("Peso Acciaio Nodo Perimetrale", dati.get('conn_trave_pilastro_perim_kg', 'N.D.'))
-            st.write(f"- **Nodi Intermedi:** {dati.get('conn_trave_pilastro_interm_elementi', 'N.D.')}")
-            st.metric("Peso Acciaio Nodo Intermedio", dati.get('conn_trave_pilastro_interm_kg', 'N.D.'))
+            if dati.get('num_appoggi', 3) > 2:
+                st.write(f"- **Nodi Intermedi:** {dati.get('conn_trave_pilastro_interm_elementi', 'N.D.')}")
+                st.metric("Peso Acciaio Nodo Intermedio", dati.get('conn_trave_pilastro_interm_kg', 'N.D.'))
         with col_n2:
             st.markdown("#### ⚓ Connessione Pilastro / Fondazione")
             st.warning(f"**Tipologia Base:** {dati.get('conn_pilastro_fondazione_tipo', 'N.D.')}")
             st.write(f"- **Ancoraggi Perimetrali:** {dati.get('conn_pilastro_fondazione_perim_elementi', 'N.D.')}")
             st.metric("Peso Acciaio Base Perimetrale", dati.get('conn_pilast_fondazione_perim_kg', 'N.D.') if 'conn_pilast_fondazione_perim_kg' in dati else dati.get('conn_pilastro_fondazione_perim_kg', 'N.D.'))
-            st.write(f"- **Ancoraggi Intermedi:** {dati.get('conn_pilastro_fondazione_interm_elementi', 'N.D.')}")
-            st.metric("Peso Acciaio Base Intermedia", dati.get('conn_pilastro_fondazione_interm_kg', 'N.D.'))
+            if dati.get('num_appoggi', 3) > 2:
+                st.write(f"- **Ancoraggi Intermedi:** {dati.get('conn_pilastro_fondazione_interm_elementi', 'N.D.')}")
+                st.metric("Peso Acciaio Base Intermedia", dati.get('conn_pilastro_fondazione_interm_kg', 'N.D.'))
         
         if "giuntata" in dati.get('tipo_travatura', '').lower():
             st.info(f"📐 **Dettaglio Giunto in Colmo (Piastra di Giunzione):** {dati.get('dettaglio_giunto_colmo', 'N.D.')}")
