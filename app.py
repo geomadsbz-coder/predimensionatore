@@ -126,7 +126,7 @@ def applica_json_progetto(json_string):
         if any(vietata in key for vietata in chiavi_vietate):
             continue
             
-        if isinstance(value, dict) and value.get("__type__") == "dataframe":
+        if isinstance(value, dict) and value.get("__type__": "dataframe":
             st.session_state[key] = pd.DataFrame(value["data"])
         else:
             st.session_state[key] = value
@@ -1162,7 +1162,7 @@ def genera_modello_3d(dati):
                     x_s1 = s * dx_falda
                     x_s2 = (s + 1) * dx_falda
                     z_s1 = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_s1 / (luce_totale / 2.0))
-                    z_s2 = altezza_gronda + (altezza_colmo - altezza_gronda) * (x_s2 / (luce_totale / 2.0))
+                    z_s2 = altezza_gronda + (altezza_colmo - altezza_colmo + altezza_colmo - altezza_gronda) * (x_s2 / (luce_totale / 2.0))
                     
                     fig.add_trace(go.Scatter3d(x=[x_s1, x_s2, None, x_s1, x_s2], y=[y_start, y_end, None, y_end, y_start], z=[z_s1, z_s2, None, z_s1, z_s2], mode='lines', line=dict(color='forestgreen', width=4), name='Controventi Copertura' if (show_leg_cv_cop and s == 0) else '', showlegend=(show_leg_cv_cop and s == 0)))
                     
@@ -1401,7 +1401,7 @@ def esegui_calcolo_carport(dati):
             z_t2 = h_fr_eff - ((h_fr_eff - h_tr_eff) * (x_t2 / w))
         else:
             z_t1 = h_tr_eff + ((h_fr_eff - h_tr_eff) * (x_t1 / w))
-            z_t2 = h_tr_eff + ((h_first - h_tr_eff) * (x_t2 / w))
+            z_t2 = h_tr_eff + ((h_fr_eff - h_tr_eff) * (x_t2 / w))
             
         L_cant_back = x_t1
         L_cant_front = w - x_t2
