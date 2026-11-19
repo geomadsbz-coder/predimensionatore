@@ -126,7 +126,7 @@ def applica_json_progetto(json_string):
         if any(vietata in key for vietata in chiavi_vietate):
             continue
             
-        if isinstance(value, dict) and value.get("__type__": "dataframe":
+        if isinstance(value, dict) and value.get("__type__") == "dataframe":
             st.session_state[key] = pd.DataFrame(value["data"])
         else:
             st.session_state[key] = value
